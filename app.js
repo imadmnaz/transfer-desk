@@ -10,9 +10,45 @@ const Engine = window.TransferDeskEngine;
 const Dates = window.TransferDeskDates;
 
 const DATA = {};
+
+// Requests shown on the landing queue. Each is seeded from a scenario, with
+// a reference, a received date and (for unrelated buyers and non-Harbour
+// sellers only) a display-level party override, applied here rather than in
+// scenarios.json so the scenario's own facts and expected verdict are
+// untouched. Renaming has no legal effect: no rule in engine.js keys off a
+// party's name except S-SCOPE's exact match on "Harbour Family Office LLC",
+// which none of these overrides touch. Session edits made in the deal view
+// are kept per request id in state.requestOverrides so the queue reflects
+// them without touching this config or the scenario data itself.
+const QUEUE_ROWS = [
+  { id: 'T09', ref: 'TR-0139', received: '2026-09-14' },
+  {
+    id: 'T10',
+    ref: 'TR-0142',
+    received: '2026-09-21',
+    displayOverrides: { transfer: { transferor: 'Oakfield Family Trust', transferee: 'Jonas Lindqvist' } },
+  },
+  { id: 'T22', ref: 'TR-0144', received: '2026-09-23', displayOverrides: { transfer: { transferee: 'Tomas Weber' } } },
+  {
+    id: 'T05',
+    ref: 'TR-0136',
+    received: '2026-09-08',
+    displayOverrides: { transfer: { transferor: 'Clara Voss', transferee: 'Beacon Street Partners LP' } },
+  },
+  { id: 'T19', ref: 'TR-0147', received: '2026-09-26' },
+  { id: 'T13', ref: 'TR-0131', received: '2026-08-25' },
+  { id: 'T26', ref: 'TR-0150', received: '2026-09-29' },
+  { id: 'T01', ref: 'TR-0128', received: '2026-08-20', displayOverrides: { transfer: { transferor: 'Daniel Okafor' } } },
+];
+
+const QUEUE_IDS = QUEUE_ROWS.map((r) => r.id);
+const QUEUE_DISPLAY_OVERRIDES = Object.fromEntries(QUEUE_ROWS.filter((r) => r.displayOverrides).map((r) => [r.id, r.displayOverrides]));
+const QUEUE_META = Object.fromEntries(QUEUE_ROWS.map((r) => [r.id, { ref: r.ref, received: r.received }]));
+
 const state = {
-  scenarioId: 'T09',
-  extraOverrides: {},
+  route: { view: 'queue' },
+  requestOverrides: {},
+  dealCollapsed: new Set(['deal-buyer', 'deal-asof']),
   lastAnswerKey: null,
 };
 
@@ -39,14 +75,35 @@ async function loadData() {
   Object.assign(DATA, { rulebook, clauses, calendar, baseFacts, scenarios, heldout });
 }
 
-function currentScenario() {
-  return DATA.scenarios.find((s) => s.id === state.scenarioId) || DATA.scenarios[0];
+// --- Routing --------------------------------------------------------------
+
+function parseHash() {
+  const m = location.hash.match(/^#\/request\/(.+)$/);
+  if (m) return { view: 'request', id: decodeURIComponent(m[1]) };
+  return { view: 'queue' };
 }
 
-function currentFacts() {
-  let facts = Engine.deepMergeFacts(DATA.baseFacts, currentScenario().overrides);
-  facts = Engine.deepMergeFacts(facts, state.extraOverrides);
-  return facts;
+function navigate(hash) {
+  location.hash = hash;
+}
+
+// --- Facts for a given request id -----------------------------------------
+
+function factsForId(id) {
+  let base;
+  if (id === 'NEW') {
+    base = DATA.baseFacts;
+  } else {
+    const scenario = DATA.scenarios.find((s) => s.id === id);
+    base = scenario ? Engine.deepMergeFacts(DATA.baseFacts, scenario.overrides) : DATA.baseFacts;
+  }
+  if (QUEUE_DISPLAY_OVERRIDES[id]) base = Engine.deepMergeFacts(base, QUEUE_DISPLAY_OVERRIDES[id]);
+  return Engine.deepMergeFacts(base, state.requestOverrides[id] || {});
+}
+
+function decisionForId(id) {
+  const facts = factsForId(id);
+  return { facts, decision: Engine.evaluate(facts, DATA.rulebook, DATA.calendar) };
 }
 
 // --- Small helpers ------------------------------------------------------
@@ -114,6 +171,173 @@ function decidingRuleId(decision) {
   return r ? r.rule_id : null;
 }
 
+function nextActionOf(decision) {
+  return decision.checklist.find((item) => item.source_rule) || null;
+}
+
+// --- Queue ------------------------------------------------------------
+
+function transferSuffix(facts) {
+  if (facts.transfer.kind === 'pledge') return ' (pledge)';
+  if (facts.transfer.fraction < 1) return ' (part of stake)';
+  return '';
+}
+
+// Queue text drops the year (dates are all within one quarter) and never
+// says "The Company" / "The General Partner": those are the generic party
+// labels the engine's consent findings are built from (see
+// engine.js's consentOutcome), and the queue always calls them by name.
+function shortReadable(dateStr) {
+  return Dates.formatReadable(dateStr).replace(/ \d{4}$/, '');
+}
+
+function queueWording(text) {
+  if (!text) return text;
+  return text.replace(/\bThe Company\b/g, 'Helion').replace(/\bThe General Partner\b/g, 'the GP').replace(/\bGeneral Partner\b/g, 'GP');
+}
+
+function firstSentence(text) {
+  const m = text.match(/^[^.!?]*[.!?]/);
+  return m ? m[0] : text;
+}
+
+function daysAwayText(fromISO, toISO) {
+  const from = Date.UTC(...fromISO.split('-').map(Number));
+  const to = Date.UTC(...toISO.split('-').map(Number));
+  const diff = Math.round((to - from) / 86400000);
+  if (diff === 0) return 'today';
+  if (diff === 1) return 'in 1 day';
+  if (diff > 1) return `in ${diff} days`;
+  if (diff === -1) return '1 day ago';
+  return `${-diff} days ago`;
+}
+
+function queueRowFor(id) {
+  const { facts, decision } = decisionForId(id);
+
+  let statusWord;
+  let statusClass = '';
+  let group;
+
+  if (decision.verdict === 'BLOCKED') {
+    statusWord = 'BLOCKED';
+    statusClass = 'blocked';
+    group = 0;
+  } else if (decision.verdict === 'ESCALATE') {
+    statusWord = 'LAWYER';
+    statusClass = 'escalate';
+    group = 1;
+  } else {
+    const outstandingCount = decision.results.filter((r) => r.state === 'OUTSTANDING').length;
+    if (outstandingCount > 0) {
+      statusWord = `${outstandingCount} action${outstandingCount === 1 ? '' : 's'}`;
+      group = 2;
+    } else {
+      statusWord = 'READY';
+      group = 3;
+    }
+  }
+
+  const whatMatters = queueWording(firstSentence(humanize(decision.headline)));
+  const dueDate = (nextActionOf(decision) || {}).due || null;
+  const meta = QUEUE_META[id];
+
+  return {
+    id,
+    ref: meta.ref,
+    received: meta.received,
+    sellerBuyer: `${facts.transfer.transferor} → ${facts.transfer.transferee}${transferSuffix(facts)}`,
+    statusWord,
+    statusClass,
+    group,
+    dueDate,
+    whatMatters,
+    completion: facts.transfer.proposed_completion,
+    completionAway: daysAwayText(facts.as_of, facts.transfer.proposed_completion),
+  };
+}
+
+function compareRows(a, b) {
+  if (a.group !== b.group) return a.group - b.group;
+  if (a.group === 2) {
+    if (a.dueDate && b.dueDate) return a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0;
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+  }
+  return 0;
+}
+
+function renderCompletionCell(row) {
+  const wrap = el('div');
+  wrap.appendChild(el('div', null, `${shortReadable(row.completion)} · ${row.completionAway}`));
+  if (row.dueDate) wrap.appendChild(el('div', 'queue-due-date', `Due ${shortReadable(row.dueDate)}`));
+  return wrap;
+}
+
+function renderQueue() {
+  const rows = QUEUE_ROWS.map((r) => r.id).map(queueRowFor).sort(compareRows);
+
+  const counts = { blocked: 0, lawyer: 0, actions: 0, ready: 0 };
+  for (const r of rows) {
+    if (r.group === 0) counts.blocked++;
+    else if (r.group === 1) counts.lawyer++;
+    else if (r.group === 2) counts.actions++;
+    else counts.ready++;
+  }
+
+  document.getElementById('queue-subheading').textContent = `Northgate Helion SPV · Checked as of ${Dates.formatReadable(DATA.baseFacts.as_of)}`;
+  document.getElementById('queue-summary').textContent =
+    `${rows.length} requests: ${counts.blocked} blocked · ${counts.lawyer} need a lawyer · ${counts.actions} actions outstanding · ${counts.ready} ready to record`;
+
+  const tbody = document.getElementById('queue-table-body');
+  tbody.innerHTML = '';
+  const mobileList = document.getElementById('queue-list-mobile');
+  mobileList.innerHTML = '';
+
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    tr.tabIndex = 0;
+    tr.className = 'queue-row';
+
+    const requestCell = el('td');
+    requestCell.appendChild(el('div', null, row.sellerBuyer));
+    requestCell.appendChild(el('div', 'queue-meta', `${row.ref} · received ${shortReadable(row.received)}`));
+    tr.appendChild(requestCell);
+
+    tr.appendChild(el('td', 'queue-status' + (row.statusClass ? ` ${row.statusClass}` : ''), row.statusWord));
+    tr.appendChild(el('td', 'queue-matters', row.whatMatters));
+    const completionCell = document.createElement('td');
+    completionCell.className = 'queue-completion';
+    completionCell.appendChild(renderCompletionCell(row));
+    tr.appendChild(completionCell);
+
+    const open = () => navigate(`#/request/${row.id}`);
+    tr.addEventListener('click', open);
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    tbody.appendChild(tr);
+
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'queue-row-mobile';
+    btn.appendChild(el('span', 'queue-row-mobile-top', row.sellerBuyer));
+    btn.appendChild(el('span', 'queue-row-mobile-meta', `${row.ref} · received ${shortReadable(row.received)}`));
+    const statusLine = el('span', 'queue-row-mobile-status' + (row.statusClass ? ` ${row.statusClass}` : ''), row.statusWord);
+    btn.appendChild(statusLine);
+    btn.appendChild(el('span', 'queue-row-mobile-matters', row.whatMatters));
+    btn.appendChild(el('span', 'queue-row-mobile-due', `${shortReadable(row.completion)} · ${row.completionAway}`));
+    if (row.dueDate) btn.appendChild(el('span', 'queue-row-mobile-due', `Due ${shortReadable(row.dueDate)}`));
+    btn.addEventListener('click', open);
+    li.appendChild(btn);
+    mobileList.appendChild(li);
+  }
+}
+
 // --- Deal field definitions -------------------------------------------
 //
 // Each field writes straight into the facts object through applyOverride().
@@ -123,7 +347,8 @@ function decidingRuleId(decision) {
 // CLAUDE.md's "fail safe, never hide the question" spirit.
 
 function applyOverride(overrideObj) {
-  state.extraOverrides = Engine.deepMergeFacts(state.extraOverrides, overrideObj);
+  const id = state.route.id;
+  state.requestOverrides[id] = Engine.deepMergeFacts(state.requestOverrides[id] || {}, overrideObj);
   render();
 }
 
@@ -148,17 +373,15 @@ function buyerByName(name) {
   return BUYERS.find((b) => b.name === name);
 }
 
-// A generic select control over a dotted fact path, with plain-English
-// option labels distinct from the engine's own values.
-function selectControl(label, path, facts, choices, opts) {
-  const current = getPath(facts, path);
+function numberControl(label, path, facts, opts) {
+  const val = getPath(facts, path);
   return {
     label,
-    kind: 'select',
-    choices,
-    currentValue: current,
+    kind: 'number',
+    currentValue: val === null || val === undefined ? '' : String(val),
     disabledReason: opts && opts.disabledReason,
-    buildOverride: (v) => nestOverride(path, v),
+    allowNull: opts && opts.allowNull,
+    buildOverride: (v) => nestOverride(path, (opts && opts.allowNull && v === '') ? null : Number(v)),
   };
 }
 
@@ -172,16 +395,16 @@ function dateControl(label, path, facts, opts) {
   };
 }
 
-function numberControl(label, path, facts, opts) {
-  const val = getPath(facts, path);
-  return {
-    label,
-    kind: 'number',
-    currentValue: val === null || val === undefined ? '' : String(val),
-    disabledReason: opts && opts.disabledReason,
-    allowNull: opts && opts.allowNull,
-    buildOverride: (v) => nestOverride(path, (opts && opts.allowNull && v === '') ? null : Number(v)),
-  };
+function buyerChecksSummary(facts) {
+  const pledge = isPledge(facts);
+  const checks = [facts.buyer.kyc === 'cleared', facts.buyer.sanctions === 'clear'];
+  if (!pledge) checks.push(facts.buyer.accredited === 'confirmed', facts.buyer.tax_form === 'received', facts.buyer.adherence === 'signed');
+  const outstanding = checks.filter((ok) => !ok).length;
+  return outstanding === 0 ? 'All buyer checks complete.' : `${outstanding} check${outstanding === 1 ? '' : 's'} outstanding or unclear.`;
+}
+
+function asOfSummary(facts) {
+  return `Checked as of ${Dates.formatReadable(facts.as_of)}.`;
 }
 
 function buildDealSections(facts) {
@@ -193,7 +416,7 @@ function buildDealSections(facts) {
   const rofrNotice = facts.company.rofr_notice || {};
   const rofrResponse = facts.company.rofr_response || {};
 
-  const affiliateReason = 'Not needed: the buyer is the seller&rsquo;s affiliate.';
+  const affiliateReason = 'Not needed: the buyer is the seller’s affiliate.';
   const harbourReason = 'Not needed: the buyer is a Harbour Transferee under the side letter.';
   const pledgeReason = "Not needed: pledges don't need this until the security is enforced.";
 
@@ -253,7 +476,7 @@ function buildDealSections(facts) {
   // --- The fund ---
   const fundFields = [
     {
-      label: "Has the fund manager (the GP) consented?",
+      label: 'Has the fund manager (the GP) consented?',
       kind: 'select',
       choices: [
         { value: 'received', label: 'Yes, in writing' },
@@ -401,10 +624,12 @@ function buildDealSections(facts) {
   }
   sections.push({ id: 'deal-company', title: "Helion's agreement", fields: companyFields });
 
-  // --- Buyer checks ---
+  // --- Buyer checks (collapsed by default) ---
   sections.push({
     id: 'deal-buyer',
     title: 'Buyer checks',
+    collapsible: true,
+    summary: buyerChecksSummary(facts),
     fields: [
       {
         label: 'KYC / AML',
@@ -461,14 +686,27 @@ function buildDealSections(facts) {
     ],
   });
 
-  // --- Checked as of ---
+  // --- Checked as of (collapsed by default) ---
   sections.push({
     id: 'deal-asof',
     title: 'Checked as of',
+    collapsible: true,
+    summary: asOfSummary(facts),
     fields: [dateControl('Checked as of', 'as_of', facts)],
   });
 
   return sections;
+}
+
+function dateHint(kind, value) {
+  if (!value) return null;
+  if (kind === 'date') return Dates.formatReadable(value);
+  if (kind === 'datetime-local') {
+    const [datePart, timePart] = value.split('T');
+    if (!datePart) return null;
+    return timePart ? `${Dates.formatReadable(datePart)} · ${timePart}` : Dates.formatReadable(datePart);
+  }
+  return null;
 }
 
 function renderField(field) {
@@ -495,6 +733,7 @@ function renderField(field) {
   } else {
     const id = 'field-' + Math.random().toString(36).slice(2);
     labelEl.htmlFor = id;
+    const row = el('div', 'field-input-row');
     const input = document.createElement('input');
     input.type = field.kind;
     input.id = id;
@@ -502,11 +741,14 @@ function renderField(field) {
     if (field.kind === 'number') input.step = 'any';
     if (field.currentValue !== undefined && field.currentValue !== null) input.value = field.currentValue;
     input.addEventListener('change', () => applyOverride(field.buildOverride(input.value)));
-    wrap.appendChild(input);
+    row.appendChild(input);
+    const hint = dateHint(field.kind, field.currentValue);
+    if (hint) row.appendChild(el('span', 'field-date-hint', hint));
+    wrap.appendChild(row);
   }
 
   if (field.disabledReason) {
-    wrap.appendChild(el('p', 'field-reason', field.disabledReason.replace('&rsquo;', '’')));
+    wrap.appendChild(el('p', 'field-reason', field.disabledReason));
   }
   return wrap;
 }
@@ -517,8 +759,26 @@ function renderDealForm(facts) {
   for (const section of buildDealSections(facts)) {
     const sectionEl = el('section', 'deal-section');
     sectionEl.id = section.id;
-    sectionEl.appendChild(el('h2', 'deal-section-title', section.title));
-    for (const field of section.fields) sectionEl.appendChild(renderField(field));
+
+    if (section.collapsible) {
+      const collapsed = state.dealCollapsed.has(section.id);
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'deal-section-toggle';
+      toggle.setAttribute('aria-expanded', String(!collapsed));
+      toggle.appendChild(el('span', 'deal-section-title-text', section.title));
+      if (collapsed && section.summary) toggle.appendChild(el('span', 'deal-section-summary', section.summary));
+      toggle.addEventListener('click', () => {
+        if (state.dealCollapsed.has(section.id)) state.dealCollapsed.delete(section.id);
+        else state.dealCollapsed.add(section.id);
+        render();
+      });
+      sectionEl.appendChild(toggle);
+      if (!collapsed) for (const field of section.fields) sectionEl.appendChild(renderField(field));
+    } else {
+      sectionEl.appendChild(el('h2', 'deal-section-title', section.title));
+      for (const field of section.fields) sectionEl.appendChild(renderField(field));
+    }
     container.appendChild(sectionEl);
   }
 }
@@ -579,7 +839,6 @@ function renderAnswer(decision, ruleMap) {
   if (state.lastAnswerKey !== null && state.lastAnswerKey !== key) {
     for (const target of [panel, document.getElementById('mobile-answer-bar')]) {
       target.classList.remove('answer-flash');
-      // Force reflow so the animation restarts even if the class never left.
       void target.offsetWidth;
       target.classList.add('answer-flash');
     }
@@ -698,47 +957,78 @@ function renderAudit(decision) {
   document.getElementById('audit-json').textContent = JSON.stringify(decision.audit, null, 2);
 }
 
-// --- Examples -----------------------------------------------------------
+// --- Scenario picker (search across all 31 test scenarios) --------------
 
-function renderExamples() {
-  const list = document.getElementById('example-list');
-  list.innerHTML = '';
+let pickerTrigger = null;
+
+function renderScenarioList(filter) {
+  const ul = document.getElementById('scenario-list');
+  ul.innerHTML = '';
+  const q = (filter || '').toLowerCase().trim();
   for (const s of DATA.scenarios) {
+    if (q && !(s.id.toLowerCase().includes(q) || s.display_name.toLowerCase().includes(q) || s.title.toLowerCase().includes(q))) continue;
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.appendChild(el('span', 'id', s.id));
     btn.appendChild(el('span', null, s.display_name));
     btn.addEventListener('click', () => {
-      state.scenarioId = s.id;
-      state.extraOverrides = {};
-      render();
-      document.getElementById('deal-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      closePicker();
+      navigate(`#/request/${s.id}`);
     });
     li.appendChild(btn);
-    list.appendChild(li);
+    ul.appendChild(li);
+  }
+}
+
+function getFocusable(container) {
+  return Array.from(container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+}
+
+function openPicker(triggerEl) {
+  pickerTrigger = triggerEl || document.activeElement;
+  document.getElementById('scenario-picker').hidden = false;
+  document.getElementById('scenario-search').value = '';
+  renderScenarioList('');
+  document.getElementById('scenario-search').focus();
+}
+
+function closePicker() {
+  document.getElementById('scenario-picker').hidden = true;
+  if (pickerTrigger) pickerTrigger.focus();
+  pickerTrigger = null;
+}
+
+function handlePickerKeydown(e) {
+  if (e.key === 'Escape') {
+    closePicker();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const dialog = document.getElementById('scenario-picker');
+  const focusable = getFocusable(dialog);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
   }
 }
 
 // --- Rendering root -------------------------------------------------------
 
-function renderError() {
-  document.getElementById('mobile-verdict').textContent = 'CANNOT EVALUATE';
-  document.getElementById('mobile-headline').textContent = 'Reload the page to try again.';
-  const panel = document.getElementById('answer-panel');
-  panel.innerHTML = '';
-  panel.appendChild(el('p', 'verdict-label escalate', 'CANNOT EVALUATE'));
-  panel.appendChild(el('h1', 'answer-headline', 'Something went wrong loading this scenario.'));
-}
-
-function render() {
+function renderRequestView() {
+  const id = state.route.id;
   let facts;
   let decision;
   try {
-    facts = currentFacts();
+    facts = factsForId(id);
     decision = Engine.evaluate(facts, DATA.rulebook, DATA.calendar);
   } catch {
-    renderError();
     return;
   }
   const ruleMap = new Map(DATA.rulebook.rules.map((r) => [r.id, r]));
@@ -752,6 +1042,22 @@ function render() {
   renderAudit(decision);
 }
 
+function render() {
+  state.route = parseHash();
+  const isRequest = state.route.view === 'request';
+
+  document.getElementById('view-queue').hidden = isRequest;
+  document.getElementById('view-request').hidden = !isRequest;
+  document.getElementById('mobile-answer-bar').hidden = !isRequest;
+  document.body.classList.toggle('view-request', isRequest);
+
+  if (isRequest) {
+    renderRequestView();
+  } else {
+    renderQueue();
+  }
+}
+
 // --- Theme --------------------------------------------------------------
 
 function prefersDark() {
@@ -763,8 +1069,10 @@ function isDarkNow() {
   return current ? current === 'dark' : prefersDark();
 }
 
-function updateThemeButton() {
-  document.getElementById('theme-toggle').textContent = isDarkNow() ? 'Light' : 'Dark';
+function updateThemeButtons() {
+  const label = isDarkNow() ? 'Light' : 'Dark';
+  document.getElementById('theme-toggle-queue').textContent = label;
+  document.getElementById('theme-toggle-request').textContent = label;
 }
 
 function initTheme() {
@@ -775,7 +1083,7 @@ function initTheme() {
     /* private mode / blocked storage: fall back to prefers-color-scheme */
   }
   if (saved === 'dark' || saved === 'light') document.documentElement.setAttribute('data-theme', saved);
-  updateThemeButton();
+  updateThemeButtons();
 }
 
 function toggleTheme() {
@@ -786,7 +1094,7 @@ function toggleTheme() {
   } catch (e) {
     /* ignore */
   }
-  updateThemeButton();
+  updateThemeButtons();
 }
 
 // --- Test runner / sweep (mirrors tests/engine.test.js and tests/sweep.test.js) ---
@@ -1069,7 +1377,8 @@ async function runSweepAndReport() {
 // --- Wiring ---------------------------------------------------------------
 
 function wireEvents() {
-  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  document.getElementById('theme-toggle-queue').addEventListener('click', toggleTheme);
+  document.getElementById('theme-toggle-request').addEventListener('click', toggleTheme);
 
   document.getElementById('audit-toggle').addEventListener('click', () => {
     const pre = document.getElementById('audit-json');
@@ -1088,13 +1397,22 @@ function wireEvents() {
   });
 
   document.getElementById('run-sweep').addEventListener('click', runSweepAndReport);
+
+  document.getElementById('new-request-btn').addEventListener('click', () => {
+    navigate('#/request/NEW');
+  });
+  document.getElementById('open-scenarios-btn').addEventListener('click', (e) => openPicker(e.currentTarget));
+  document.getElementById('picker-close').addEventListener('click', closePicker);
+  document.getElementById('scenario-search').addEventListener('input', (e) => renderScenarioList(e.target.value));
+  document.getElementById('scenario-picker').addEventListener('keydown', handlePickerKeydown);
+
+  window.addEventListener('hashchange', render);
 }
 
 async function init() {
   initTheme();
   wireEvents();
   await loadData();
-  renderExamples();
   render();
 }
 

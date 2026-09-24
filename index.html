@@ -12,7 +12,7 @@
 </head>
 <body>
 
-<div id="mobile-answer-bar" class="mobile-answer-bar" aria-live="polite">
+<div id="mobile-answer-bar" class="mobile-answer-bar" hidden aria-live="polite">
   <div class="mobile-answer-text">
     <span id="mobile-verdict" class="mobile-verdict"></span>
     <span id="mobile-headline" class="mobile-headline"></span>
@@ -22,59 +22,102 @@
 
 <main class="page">
 
-  <header class="bar">
-    <span class="wordmark">Transfer Desk</span>
-  </header>
+  <!-- ============================= Queue ============================= -->
+  <section id="view-queue">
+    <header class="bar">
+      <span class="wordmark">Transfer Desk</span>
+    </header>
 
-  <h1 class="page-title">Can this SPV sale go ahead?</h1>
-  <p class="lede">Edit the deal below. The answer updates instantly, with the clause behind it.</p>
-  <p class="tag">Synthetic documents. Not legal advice.</p>
+    <h1 class="page-title">Transfer requests</h1>
+    <p class="lede" id="queue-subheading"></p>
+    <p class="tag">Synthetic documents. Not legal advice.</p>
+    <p id="queue-summary" class="queue-summary"></p>
 
-  <div class="layout">
-    <div class="deal-col">
-      <div id="deal-form"></div>
+    <table id="queue-table" class="queue-table">
+      <thead>
+        <tr>
+          <th>Request</th>
+          <th>Status</th>
+          <th>What matters</th>
+          <th>Completion</th>
+        </tr>
+      </thead>
+      <tbody id="queue-table-body"></tbody>
+    </table>
+
+    <ul id="queue-list-mobile" class="queue-list-mobile"></ul>
+
+    <div class="queue-actions">
+      <button id="new-request-btn" class="secondary-btn" type="button">New request</button>
+      <button id="open-scenarios-btn" class="secondary-btn" type="button">Open any of the 31 test scenarios</button>
     </div>
 
-    <aside id="answer-panel" class="answer-panel" aria-live="polite"></aside>
-  </div>
+    <section class="content-section">
+      <h2 class="section-title">Is it safe?</h2>
+      <p class="explainer">An unsafe clear is a case where a rule failed, or evidence was missing or contradictory, yet the tool said the checklist was ready anyway. This checks every combination of the facts that matter for that.</p>
+      <button id="run-sweep" class="run-sweep" type="button">Run all 486,000 combinations</button>
+      <div id="sweep-result" class="sweep-result" aria-live="polite"></div>
+    </section>
 
-  <section id="why-section" class="content-section">
-    <h2 class="section-title">Why</h2>
-    <div id="why-body"></div>
+    <footer class="footer">
+      <button id="theme-toggle-queue" class="theme-toggle" type="button">Dark</button>
+    </footer>
   </section>
 
-  <section id="next-section" class="content-section">
-    <h2 id="next-heading" class="section-title">What happens next</h2>
-    <ol id="next-list" class="checklist"></ol>
-  </section>
+  <!-- ============================ Request ============================ -->
+  <section id="view-request" hidden>
+    <p class="back-link"><a href="#/">&larr; All requests</a></p>
 
-  <section class="content-section">
-    <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="false">Every rule we checked</button>
-    <div id="all-rules-body" hidden></div>
-  </section>
+    <header class="bar">
+      <span class="wordmark">Transfer Desk</span>
+    </header>
 
-  <section class="content-section">
-    <h2 class="section-title">Is it safe?</h2>
-    <p class="explainer">An unsafe clear is a case where a rule failed, or evidence was missing or contradictory, yet the tool said the checklist was ready anyway. This checks every combination of the facts that matter for that.</p>
-    <button id="run-sweep" class="run-sweep" type="button">Run all 486,000 combinations</button>
-    <div id="sweep-result" class="sweep-result" aria-live="polite"></div>
-  </section>
+    <h1 class="page-title">Can this SPV sale go ahead?</h1>
+    <p class="lede">Edit the deal below. The answer updates instantly, with the clause behind it.</p>
+    <p class="tag">Synthetic documents. Not legal advice.</p>
 
-  <section class="content-section">
-    <h2 class="section-title">Start from an example</h2>
-    <ul id="example-list" class="example-list"></ul>
-  </section>
+    <div class="layout">
+      <div class="deal-col">
+        <div id="deal-form"></div>
+      </div>
 
-  <section id="audit-section" class="audit-section">
-    <button id="audit-toggle" class="audit-toggle" type="button" aria-expanded="false">Audit record</button>
-    <pre id="audit-json" class="audit-json" hidden></pre>
-  </section>
+      <aside id="answer-panel" class="answer-panel" aria-live="polite"></aside>
+    </div>
 
-  <footer class="footer">
-    <button id="theme-toggle" class="theme-toggle" type="button">Dark</button>
-  </footer>
+    <section id="why-section" class="content-section">
+      <h2 class="section-title">Why</h2>
+      <div id="why-body"></div>
+    </section>
+
+    <section id="next-section" class="content-section">
+      <h2 id="next-heading" class="section-title">What happens next</h2>
+      <ol id="next-list" class="checklist"></ol>
+    </section>
+
+    <section class="content-section">
+      <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="false">Every rule we checked</button>
+      <div id="all-rules-body" hidden></div>
+    </section>
+
+    <section id="audit-section" class="audit-section">
+      <button id="audit-toggle" class="audit-toggle" type="button" aria-expanded="false">Audit record</button>
+      <pre id="audit-json" class="audit-json" hidden></pre>
+    </section>
+
+    <footer class="footer">
+      <button id="theme-toggle-request" class="theme-toggle" type="button">Dark</button>
+    </footer>
+  </section>
 
 </main>
+
+<div id="scenario-picker" class="scenario-picker" hidden role="dialog" aria-modal="true" aria-label="Choose a scenario">
+  <div class="picker-header">
+    <input id="scenario-search" type="text" placeholder="Search scenarios" aria-label="Search scenarios">
+    <button id="picker-close" type="button">Close</button>
+  </div>
+  <ul id="scenario-list" class="scenario-list"></ul>
+</div>
 
 <script src="engine/dates.js"></script>
 <script src="engine/engine.js"></script>

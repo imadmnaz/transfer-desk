@@ -8,14 +8,15 @@ The documents, parties and dates are synthetic. This is not legal advice.
 
 ## Try it in a minute
 
-The demo opens with a four-step walkthrough, one tap per step:
+The demo opens on a queue of eight transfer requests for one SPV, the way an operations team would see them: each with its status, the reason in one line and its completion date. Every request opens into the deal itself, where each fact can be changed and the answer updates instantly.
 
-1. A sale that is clean under the SPV's own documents and still blocked, because the buyer is a named competitor of the portfolio company.
-2. Change the buyer so it is not a competitor, and the answer changes to "ready for the GP to record".
-3. Make the company's consent uncertain ("agreed on a call"), and the answer changes to lawyer review. The tool will not clear what it cannot evidence.
-4. Run every combination of facts in the test sweep, 486,000 of them, and watch it finish on 0 unsafe clears.
+1. **Open the request to Kestrel Automation.** It is blocked. The SPV's own documents are satisfied, but Helion's stockholders' agreement bars competitors whatever the consents, and the clause is quoted with a link to its page in the PDF.
+2. **Change the buyer.** The answer moves to "ready for the GP to record", and the request's row in the queue changes with it.
+3. **Set Helion's consent to "Only agreed on a call".** The answer moves to lawyer review. The tool will not clear what it cannot evidence.
+4. **Open the request completing on Mon 2 Nov**, where Helion's right of first refusal is still running. Move completion to before Mon 26 Oct and it blocks, with the date the right lapses and the working behind it.
+5. **Back on the queue, run "Is it safe?"** It tries 486,000 combinations of facts in your browser and reports the number of unsafe clears: zero.
 
-After that, use **Change** to load any of the 31 scenarios, change any fact to see how the answer moves, or run the full test suite from the bottom of the page.
+"New request" starts a blank deal, and all 31 test scenarios can be opened from the queue.
 
 ## Why I built this
 
