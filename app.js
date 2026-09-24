@@ -48,9 +48,16 @@ const QUEUE_META = Object.fromEntries(QUEUE_ROWS.map((r) => [r.id, { ref: r.ref,
 const state = {
   route: { view: 'queue' },
   requestOverrides: {},
-  dealCollapsed: new Set(['deal-buyer', 'deal-asof']),
+  dealCollapsed: new Set(['deal-fund', 'deal-harbour', 'deal-company', 'deal-buyer', 'deal-asof']),
   lastAnswerKey: null,
+  docViewer: { open: false, doc: null },
 };
+
+const DOC_LIST = [
+  { key: 'LPA', label: 'LPA' },
+  { key: 'SA', label: "Stockholders’ agreement" },
+  { key: 'SL', label: 'Side letter' },
+];
 
 const STATE_LABELS = {
   SATISFIED: 'Met',
@@ -285,7 +292,6 @@ function renderQueue() {
     else counts.ready++;
   }
 
-  document.getElementById('queue-subheading').textContent = `Northgate Helion SPV · Checked as of ${Dates.formatReadable(DATA.baseFacts.as_of)}`;
   document.getElementById('queue-summary').textContent =
     `${rows.length} requests: ${counts.blocked} blocked · ${counts.lawyer} need a lawyer · ${counts.actions} actions outstanding · ${counts.ready} ready to record`;
 
@@ -395,6 +401,47 @@ function dateControl(label, path, facts, opts) {
   };
 }
 
+const CONSENT_LABELS = {
+  received: 'Given in writing',
+  requested: 'Asked, no reply',
+  refused: 'Refused',
+  not_requested: 'Not asked',
+  unknown: 'Unclear',
+  contradictory: 'Conflicting evidence',
+};
+
+const ROFR_NOTICE_LABELS = {
+  not_sent: 'notice not sent',
+  sent_no_proof: 'notice sent, no proof',
+  delivered: 'notice delivered',
+  not_applicable: 'not relevant',
+};
+
+function saleSummary(facts) {
+  const kind = facts.transfer.kind === 'pledge' ? 'Pledge' : 'Sale';
+  const stake = facts.transfer.fraction >= 1 ? 'whole stake' : `${Math.round(facts.transfer.fraction * 100)}% of the stake`;
+  return `${facts.transfer.transferor} → ${facts.transfer.transferee} · ${kind} · ${stake}`;
+}
+
+function fundSummary(facts) {
+  if (isAffiliate(facts) || facts.transfer.transferee_relationship === 'harbour_transferee') return 'GP consent not needed for this buyer.';
+  const status = CONSENT_LABELS[(facts.fund.gp_consent || {}).status] || 'Not set';
+  const owners = facts.fund.beneficial_owners_current;
+  return `GP consent: ${status}${owners == null ? '' : ` · ${owners} beneficial owners`}`;
+}
+
+function harbourSummary(facts) {
+  const complete = (facts.fund.gp_consent || {}).complete;
+  return complete === 'yes' ? 'Request marked complete.' : complete === 'no' ? 'Request marked incomplete.' : 'Completeness unclear.';
+}
+
+function companySummary(facts) {
+  if (isAffiliate(facts)) return 'Permitted-transfer notice to Helion, not a consent request.';
+  const consent = CONSENT_LABELS[(facts.company.consent || {}).status] || 'Not set';
+  const rofr = ROFR_NOTICE_LABELS[(facts.company.rofr_notice || {}).status] || 'not sent';
+  return `Consent: ${consent} · ROFR ${rofr}`;
+}
+
 function buyerChecksSummary(facts) {
   const pledge = isPledge(facts);
   const checks = [facts.buyer.kyc === 'cleared', facts.buyer.sanctions === 'clear'];
@@ -426,22 +473,35 @@ function buildDealSections(facts) {
   sections.push({
     id: 'deal-sale',
     title: 'The sale',
+    summary: saleSummary(facts),
     fields: [
       {
         label: 'Seller',
-        kind: 'select',
+        kind: 'party-select',
         choices: SELLERS.map((n) => ({ value: n, label: n })),
         currentValue: facts.transfer.transferor,
         buildOverride: (v) => ({ transfer: { transferor: v } }),
       },
       {
         label: 'Buyer',
-        kind: 'select',
+        kind: 'party-select',
         choices: BUYERS.map((b) => ({ value: b.name, label: b.note ? `${b.name} (${b.note})` : b.name })),
         currentValue: facts.transfer.transferee,
         buildOverride: (v) => {
           const b = buyerByName(v);
-          return { transfer: { transferee: v, transferee_relationship: b.relationship, transferee_is_competitor: b.competitor } };
+          const override = { transfer: { transferee: v, transferee_relationship: b.relationship, transferee_is_competitor: b.competitor } };
+          // A Permitted Transferee under LPA 8.2 / SA 3.2 needs its own
+          // notice evidence, not the "not_applicable" default left over from
+          // an unrelated buyer: start both notices at "not sent" so the
+          // engine reports them as an outstanding action rather than a fact
+          // it cannot make sense of.
+          if (b.relationship === 'affiliate') {
+            const gpNotice = facts.fund.gp_permitted_notice || {};
+            const companyNotice = facts.company.permitted_notice || {};
+            override.fund = { gp_permitted_notice: { ...gpNotice, status: 'not_sent' } };
+            override.company = { permitted_notice: { ...companyNotice, status: 'not_sent' } };
+          }
+          return override;
         },
       },
       {
@@ -499,13 +559,14 @@ function buildDealSections(facts) {
       disabledReason: pledge ? pledgeReason : null,
     }),
   ];
-  sections.push({ id: 'deal-fund', title: 'The fund', fields: fundFields });
+  sections.push({ id: 'deal-fund', title: 'The fund', summary: fundSummary(facts), fields: fundFields });
 
   // --- Harbour side letter (only when seller is Harbour) ---
   if (harbourSeller) {
     sections.push({
       id: 'deal-harbour',
       title: 'Harbour side letter',
+      summary: harbourSummary(facts),
       fields: [
         {
           label: 'Did the GP receive a complete request?',
@@ -622,13 +683,12 @@ function buildDealSections(facts) {
       );
     }
   }
-  sections.push({ id: 'deal-company', title: "Helion's agreement", fields: companyFields });
+  sections.push({ id: 'deal-company', title: "Helion's agreement", summary: companySummary(facts), fields: companyFields });
 
-  // --- Buyer checks (collapsed by default) ---
+  // --- Buyer checks ---
   sections.push({
     id: 'deal-buyer',
     title: 'Buyer checks',
-    collapsible: true,
     summary: buyerChecksSummary(facts),
     fields: [
       {
@@ -686,11 +746,10 @@ function buildDealSections(facts) {
     ],
   });
 
-  // --- Checked as of (collapsed by default) ---
+  // --- Checked as of ---
   sections.push({
     id: 'deal-asof',
     title: 'Checked as of',
-    collapsible: true,
     summary: asOfSummary(facts),
     fields: [dateControl('Checked as of', 'as_of', facts)],
   });
@@ -715,7 +774,24 @@ function renderField(field) {
   wrap.appendChild(labelEl);
   if (field.note) wrap.appendChild(el('p', 'field-note', field.note));
 
-  if (field.kind === 'select') {
+  if (field.kind === 'party-select' || (field.kind === 'select' && field.choices.length > 5)) {
+    // A select styled to match .segmented (same height, border and type):
+    // used for Seller/Buyer, and for any single-choice field with more than
+    // five options, where segmented buttons would wrap awkwardly.
+    const select = document.createElement('select');
+    select.className = 'choice-select';
+    select.disabled = Boolean(field.disabledReason);
+    select.setAttribute('aria-label', field.label);
+    for (const choice of field.choices) {
+      const opt = document.createElement('option');
+      opt.value = choice.value;
+      opt.textContent = choice.label;
+      opt.selected = String(choice.value) === String(field.currentValue);
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => applyOverride(field.buildOverride(select.value)));
+    wrap.appendChild(select);
+  } else if (field.kind === 'select') {
     const group = el('div', 'segmented');
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', field.label);
@@ -753,32 +829,53 @@ function renderField(field) {
   return wrap;
 }
 
-function renderDealForm(facts) {
+// Which deal-form section holds the fact that is actually deciding the
+// verdict, so that section can open on its own and carry a "Deciding" label
+// (see decidingSectionId below). preliminary has no editable section of its
+// own (X-CLASSIFY/X-VERSION are not user-editable facts), so it falls back
+// to the sale section, where the transfer's classification lives.
+const GATE_SECTION = {
+  preliminary: 'deal-sale',
+  side_letter: 'deal-harbour',
+  fund: 'deal-fund',
+  company: 'deal-company',
+  buyer: 'deal-buyer',
+};
+
+function decidingSectionId(decidingId, ruleMap, sections) {
+  if (!decidingId) return null;
+  const rule = ruleMap.get(decidingId);
+  const candidate = rule && GATE_SECTION[rule.gate];
+  return candidate && sections.some((s) => s.id === candidate) ? candidate : null;
+}
+
+function renderDealForm(facts, decidingId, ruleMap) {
   const container = document.getElementById('deal-form');
   container.innerHTML = '';
-  for (const section of buildDealSections(facts)) {
+  const sections = buildDealSections(facts);
+  const decidingSecId = decidingSectionId(decidingId, ruleMap, sections);
+  if (decidingSecId) state.dealCollapsed.delete(decidingSecId);
+
+  for (const section of sections) {
     const sectionEl = el('section', 'deal-section');
     sectionEl.id = section.id;
+    const isDeciding = section.id === decidingSecId;
 
-    if (section.collapsible) {
-      const collapsed = state.dealCollapsed.has(section.id);
-      const toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'deal-section-toggle';
-      toggle.setAttribute('aria-expanded', String(!collapsed));
-      toggle.appendChild(el('span', 'deal-section-title-text', section.title));
-      if (collapsed && section.summary) toggle.appendChild(el('span', 'deal-section-summary', section.summary));
-      toggle.addEventListener('click', () => {
-        if (state.dealCollapsed.has(section.id)) state.dealCollapsed.delete(section.id);
-        else state.dealCollapsed.add(section.id);
-        render();
-      });
-      sectionEl.appendChild(toggle);
-      if (!collapsed) for (const field of section.fields) sectionEl.appendChild(renderField(field));
-    } else {
-      sectionEl.appendChild(el('h2', 'deal-section-title', section.title));
-      for (const field of section.fields) sectionEl.appendChild(renderField(field));
-    }
+    const collapsed = state.dealCollapsed.has(section.id);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'deal-section-toggle';
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.appendChild(el('span', 'deal-section-title-text', section.title));
+    if (isDeciding) toggle.appendChild(el('span', 'deal-section-deciding', 'Deciding'));
+    if (collapsed && section.summary) toggle.appendChild(el('span', 'deal-section-summary', section.summary));
+    toggle.addEventListener('click', () => {
+      if (state.dealCollapsed.has(section.id)) state.dealCollapsed.delete(section.id);
+      else state.dealCollapsed.add(section.id);
+      render();
+    });
+    sectionEl.appendChild(toggle);
+    if (!collapsed) for (const field of section.fields) sectionEl.appendChild(renderField(field));
     container.appendChild(sectionEl);
   }
 }
@@ -833,8 +930,6 @@ function renderAnswer(decision, ruleMap) {
   }
   panel.appendChild(docList);
 
-  panel.appendChild(el('p', 'answer-hint', "Try picking a different buyer, or change Helion's consent to “Only agreed on a call”."));
-
   const key = `${decision.verdict}|${decision.headline}`;
   if (state.lastAnswerKey !== null && state.lastAnswerKey !== key) {
     for (const target of [panel, document.getElementById('mobile-answer-bar')]) {
@@ -872,16 +967,24 @@ function renderWhy(decision, decidingId, ruleMap) {
       const source = el('div', 'source');
       source.appendChild(el('div', 'source-line', `${clause.docTitle.split(' - ')[0]} · ${formatCitation(top)} · p. ${clause.page}`));
       source.appendChild(el('blockquote', null, clause.text));
-      const link = el('a', 'open-doc', `Open the full document at p. ${clause.page}`);
-      link.href = `docs/source/${clause.file}#page=${clause.page}`;
-      link.target = '_blank';
-      link.rel = 'noopener';
+      const link = document.createElement('button');
+      link.type = 'button';
+      link.className = 'open-doc';
+      link.textContent = `Open the full document at p. ${clause.page}`;
+      link.addEventListener('click', () => openDocViewer(top.doc, top.section));
       source.appendChild(link);
       container.appendChild(source);
     }
     if (rule.citations.length > 1) {
       const others = el('div', 'cites');
-      for (const c of rule.citations.slice(1)) others.appendChild(el('span', 'cite', formatCitation(c)));
+      for (const c of rule.citations.slice(1)) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cite';
+        btn.textContent = formatCitation(c);
+        btn.addEventListener('click', () => openDocViewer(c.doc, c.section));
+        others.appendChild(btn);
+      }
       container.appendChild(others);
     }
   }
@@ -1019,7 +1122,239 @@ function handlePickerKeydown(e) {
   }
 }
 
+// --- Nav drawer (mobile menu, mirrors the sidebar) -----------------------
+
+let drawerTrigger = null;
+
+function openDrawer(triggerEl) {
+  drawerTrigger = triggerEl || document.activeElement;
+  document.getElementById('nav-drawer').hidden = false;
+  document.getElementById('nav-menu-btn').setAttribute('aria-expanded', 'true');
+  getFocusable(document.getElementById('nav-drawer'))[0]?.focus();
+}
+
+function closeDrawer() {
+  document.getElementById('nav-drawer').hidden = true;
+  document.getElementById('nav-menu-btn').setAttribute('aria-expanded', 'false');
+  if (drawerTrigger) drawerTrigger.focus();
+  drawerTrigger = null;
+}
+
+function handleDrawerKeydown(e) {
+  if (e.key === 'Escape') {
+    closeDrawer();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const dialog = document.getElementById('nav-drawer');
+  const focusable = getFocusable(dialog);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+function runNavAction(action, triggerEl) {
+  if (action === 'requests') navigate('#/');
+  else if (action === 'new') navigate('#/request/NEW');
+  else if (action === 'scenarios') openPicker(triggerEl);
+  else if (action === 'documents') openDocViewer('LPA', null);
+  else if (action === 'safe') {
+    navigate('#/');
+    setTimeout(() => document.getElementById('safe-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  }
+}
+
+// --- Document viewer (reads docs/source Markdown, tab per document) ------
+
+function mdInline(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+}
+
+function mdToFragment(md) {
+  const frag = document.createDocumentFragment();
+  let para = [];
+  const flush = () => {
+    if (!para.length) return;
+    const text = para.join(' ').trim();
+    para = [];
+    if (!text) return;
+    const p = document.createElement('p');
+    const m = text.match(/^\*\*(\d+(?:\.\d+)?)\s+[^*]*\*\*/);
+    if (m) {
+      p.id = `clause-${m[1]}`;
+      p.dataset.section = m[1];
+    }
+    p.innerHTML = mdInline(text);
+    frag.appendChild(p);
+  };
+  for (const raw of md.split('\n')) {
+    const line = raw.trim();
+    if (line === '') {
+      flush();
+    } else if (line === '---') {
+      flush();
+      frag.appendChild(document.createElement('hr'));
+    } else if (/^#{1,3}\s/.test(line)) {
+      flush();
+      const level = line.match(/^#+/)[0].length;
+      const h = document.createElement(level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4');
+      h.innerHTML = mdInline(line.replace(/^#+\s*/, ''));
+      frag.appendChild(h);
+    } else if (line.startsWith('>')) {
+      flush();
+      const bq = el('blockquote', 'doc-notice');
+      bq.innerHTML = mdInline(line.replace(/^>\s*/, ''));
+      frag.appendChild(bq);
+    } else {
+      para.push(line);
+    }
+  }
+  flush();
+  return frag;
+}
+
+function sectionAnchorId(section) {
+  const m = String(section).match(/^\d+(?:\.\d+)?/);
+  return m ? `clause-${m[0]}` : null;
+}
+
+async function loadDocSource(key) {
+  if (!DATA.docSource) DATA.docSource = {};
+  if (DATA.docSource[key]) return DATA.docSource[key];
+  const file = DATA.clauses[key].file.replace(/\.pdf$/, '.md');
+  const text = await fetch(`docs/source/${file}`).then((r) => r.text());
+  DATA.docSource[key] = text;
+  return text;
+}
+
+function renderDocTabs() {
+  const container = document.getElementById('doc-tabs');
+  container.innerHTML = '';
+  for (const doc of DOC_LIST) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'doc-tab';
+    btn.setAttribute('role', 'tab');
+    btn.textContent = doc.label;
+    btn.addEventListener('click', () => openDocViewer(doc.key, null));
+    container.appendChild(btn);
+  }
+}
+
+function updateDocTabsSelection(key) {
+  const tabs = document.querySelectorAll('#doc-tabs .doc-tab');
+  DOC_LIST.forEach((doc, i) => tabs[i].setAttribute('aria-selected', String(doc.key === key)));
+}
+
+let docViewerTrigger = null;
+
+async function openDocViewer(key, section) {
+  docViewerTrigger = document.activeElement;
+  const panel = document.getElementById('doc-viewer');
+  const backdrop = document.getElementById('doc-viewer-backdrop');
+  panel.hidden = false;
+  backdrop.hidden = false;
+  state.docViewer = { open: true, doc: key };
+  updateDocTabsSelection(key);
+
+  const clauseDoc = DATA.clauses[key];
+  const meta = document.getElementById('doc-viewer-meta');
+  meta.innerHTML = '';
+  meta.appendChild(el('span', null, clauseDoc.title.split(' - ')[0]));
+  const pdfLink = el('a', null, 'Download PDF');
+  pdfLink.href = `docs/source/${clauseDoc.file}`;
+  pdfLink.target = '_blank';
+  pdfLink.rel = 'noopener';
+  meta.appendChild(pdfLink);
+
+  const body = document.getElementById('doc-viewer-body');
+  body.innerHTML = 'Loading…';
+  const text = await loadDocSource(key);
+  if (state.docViewer.doc !== key) return; // a later tab click won.
+  body.innerHTML = '';
+  body.appendChild(mdToFragment(text));
+
+  body.querySelectorAll('.clause-highlight').forEach((n) => n.classList.remove('clause-highlight', 'clause-flash'));
+  const anchorId = section ? sectionAnchorId(section) : null;
+  const target = anchorId && document.getElementById(anchorId);
+  if (target) {
+    target.classList.add('clause-highlight', 'clause-flash');
+    target.scrollIntoView({ block: 'center' });
+  } else {
+    body.scrollTop = 0;
+  }
+  body.focus();
+}
+
+function closeDocViewer() {
+  document.getElementById('doc-viewer').hidden = true;
+  document.getElementById('doc-viewer-backdrop').hidden = true;
+  state.docViewer = { open: false, doc: null };
+  if (docViewerTrigger) docViewerTrigger.focus();
+  docViewerTrigger = null;
+}
+
+function handleDocViewerKeydown(e) {
+  if (e.key === 'Escape') {
+    closeDocViewer();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const dialog = document.getElementById('doc-viewer');
+  const focusable = getFocusable(dialog);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 // --- Rendering root -------------------------------------------------------
+
+function requestLabel(id, facts) {
+  const meta = QUEUE_META[id];
+  const parties = `${facts.transfer.transferor} → ${facts.transfer.transferee}`;
+  return meta ? `${meta.ref} ${parties}` : `New request · ${parties}`;
+}
+
+function renderBreadcrumb(id, facts) {
+  const el2 = document.getElementById('breadcrumb');
+  el2.innerHTML = '';
+  const link = el('a', null, 'Requests');
+  link.href = '#/';
+  el2.appendChild(link);
+  el2.appendChild(el('span', 'sep', '/'));
+  el2.appendChild(el('span', 'current', requestLabel(id, facts)));
+}
+
+function renderTopbarContext() {
+  const el2 = document.getElementById('topbar-context');
+  if (el2 && DATA.baseFacts) el2.textContent = `Northgate Helion SPV · Checked as of ${Dates.formatReadable(DATA.baseFacts.as_of)}`;
+}
+
+function renderSidebarCounts() {
+  const count = String(QUEUE_ROWS.length);
+  const sidebarCount = document.getElementById('sidebar-count');
+  const drawerCount = document.getElementById('drawer-count');
+  if (sidebarCount) sidebarCount.textContent = count;
+  if (drawerCount) drawerCount.textContent = count;
+}
 
 function renderRequestView() {
   const id = state.route.id;
@@ -1034,7 +1369,8 @@ function renderRequestView() {
   const ruleMap = new Map(DATA.rulebook.rules.map((r) => [r.id, r]));
   const decidingId = decidingRuleId(decision);
 
-  renderDealForm(facts);
+  renderBreadcrumb(id, facts);
+  renderDealForm(facts, decidingId, ruleMap);
   renderAnswer(decision, ruleMap);
   renderWhy(decision, decidingId, ruleMap);
   renderNext(decision, ruleMap);
@@ -1050,6 +1386,9 @@ function render() {
   document.getElementById('view-request').hidden = !isRequest;
   document.getElementById('mobile-answer-bar').hidden = !isRequest;
   document.body.classList.toggle('view-request', isRequest);
+
+  renderTopbarContext();
+  renderSidebarCounts();
 
   if (isRequest) {
     renderRequestView();
@@ -1071,8 +1410,8 @@ function isDarkNow() {
 
 function updateThemeButtons() {
   const label = isDarkNow() ? 'Light' : 'Dark';
-  document.getElementById('theme-toggle-queue').textContent = label;
-  document.getElementById('theme-toggle-request').textContent = label;
+  document.getElementById('theme-toggle').textContent = label;
+  document.getElementById('theme-toggle-drawer').textContent = label;
 }
 
 function initTheme() {
@@ -1377,8 +1716,24 @@ async function runSweepAndReport() {
 // --- Wiring ---------------------------------------------------------------
 
 function wireEvents() {
-  document.getElementById('theme-toggle-queue').addEventListener('click', toggleTheme);
-  document.getElementById('theme-toggle-request').addEventListener('click', toggleTheme);
+  document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+  document.getElementById('theme-toggle-drawer').addEventListener('click', toggleTheme);
+
+  for (const btn of document.querySelectorAll('[data-nav]')) {
+    btn.addEventListener('click', () => {
+      const wasInDrawer = !document.getElementById('nav-drawer').hidden;
+      if (wasInDrawer) closeDrawer();
+      runNavAction(btn.dataset.nav, wasInDrawer ? document.getElementById('nav-menu-btn') : btn);
+    });
+  }
+  document.getElementById('nav-menu-btn').addEventListener('click', (e) => openDrawer(e.currentTarget));
+  document.getElementById('nav-drawer-close').addEventListener('click', closeDrawer);
+  document.getElementById('nav-drawer').addEventListener('keydown', handleDrawerKeydown);
+
+  renderDocTabs();
+  document.getElementById('doc-viewer-close').addEventListener('click', closeDocViewer);
+  document.getElementById('doc-viewer-backdrop').addEventListener('click', closeDocViewer);
+  document.getElementById('doc-viewer').addEventListener('keydown', handleDocViewerKeydown);
 
   document.getElementById('audit-toggle').addEventListener('click', () => {
     const pre = document.getElementById('audit-json');

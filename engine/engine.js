@@ -205,7 +205,7 @@ function consentOutcome(status, partyLabel, silenceCitationText) {
     case 'contradictory':
       return { state: 'CONTRADICTORY', reason: `The evidence of ${partyLabel}'s consent is contradictory.` };
     default:
-      throw new Error(`Unknown consent status: ${status}`);
+      return { state: 'UNKNOWN', reason: `${partyLabel}'s consent status is not recognized.` };
   }
 }
 
@@ -321,6 +321,11 @@ function evaluate(facts, rulebook, calendar) {
           'It cannot be shown that the request for consent was complete under SL para 2, so the deemed-consent clock cannot be shown to have started.';
         deemedConsentOutcome = { state: 'UNKNOWN', reason };
         mk('S-DEEMED-CONSENT', 'UNKNOWN', reason);
+      } else if (!dates.isValidTimestamp(gpConsent.requested_at)) {
+        const reason =
+          'The date the General Partner received the request for consent is missing or invalid, so the deemed-consent clock cannot be shown to have started.';
+        deemedConsentOutcome = { state: 'UNKNOWN', reason };
+        mk('S-DEEMED-CONSENT', 'UNKNOWN', reason);
       } else {
         const receipt = dates.receivedDate(gpConsent.requested_at, calendar);
         const deemed = dates.addBusinessDays(receipt.date, 10, calendar);
@@ -368,6 +373,11 @@ function evaluate(facts, rulebook, calendar) {
 
   function evaluatePermittedNotice(ruleId, notice, clearDays, partyLabel) {
     switch (notice.status) {
+      // A Permitted Transferee whose notice fact is still "not_applicable"
+      // (the default before this evidence has been gathered) has, as far as
+      // the record shows, not yet been given notice: treat it the same as
+      // "not_sent" rather than treating an unrecognised status as an error.
+      case 'not_applicable':
       case 'not_sent':
         mk(ruleId, 'OUTSTANDING', `Written notice of the Transfer has not yet been sent to ${partyLabel}.`, {
           action: {
@@ -381,6 +391,10 @@ function evaluate(facts, rulebook, calendar) {
         mk(ruleId, 'UNKNOWN', `Notice was reportedly sent to ${partyLabel} but delivery cannot be evidenced.`);
         return;
       case 'delivered': {
+        if (!dates.isValidTimestamp(notice.sent_at)) {
+          mk(ruleId, 'UNKNOWN', `The date notice was delivered to ${partyLabel} is missing or invalid.`);
+          return;
+        }
         const receipt = dates.receivedDate(notice.sent_at, calendar);
         const earliest = dates.addBusinessDays(receipt.date, clearDays + 1, calendar);
         const working = dates.businessDaysWorking(receipt.date, clearDays + 1, earliest, 'after receipt');
@@ -407,7 +421,8 @@ function evaluate(facts, rulebook, calendar) {
         return;
       }
       default:
-        throw new Error(`Unhandled notice status for ${ruleId}: ${notice.status}`);
+        mk(ruleId, 'UNKNOWN', `The notice status for ${partyLabel} is not recognized.`);
+        return;
     }
   }
 
@@ -560,6 +575,9 @@ function evaluate(facts, rulebook, calendar) {
               'It cannot be shown that the Transfer Notice served was complete, so the exercise period cannot be shown to have started.'
             );
             rofrNoticeState = 'UNKNOWN';
+          } else if (!dates.isValidTimestamp(notice.sent_at)) {
+            mk('C-ROFR-NOTICE', 'UNKNOWN', 'The date the Transfer Notice was delivered is missing or invalid.');
+            rofrNoticeState = 'UNKNOWN';
           } else {
             const receipt = dates.receivedDate(notice.sent_at, calendar);
             const expiry = dates.addBusinessDays(receipt.date, 20, calendar);
@@ -576,7 +594,8 @@ function evaluate(facts, rulebook, calendar) {
           }
           break;
         default:
-          throw new Error(`Unhandled rofr_notice status: ${notice.status}`);
+          mk('C-ROFR-NOTICE', 'UNKNOWN', 'The Transfer Notice status is not recognized.');
+          rofrNoticeState = 'UNKNOWN';
       }
     }
   }
@@ -660,7 +679,7 @@ function evaluate(facts, rulebook, calendar) {
           break;
         }
         default:
-          throw new Error(`Unhandled rofr_response status: ${resp.status}`);
+          mk('C-ROFR-RESPONSE', 'UNKNOWN', 'The Company response to the Transfer Notice is not recognized.');
       }
     }
   }
@@ -669,16 +688,27 @@ function evaluate(facts, rulebook, calendar) {
     const resp = facts.company.rofr_response;
     let applicable = false;
     let referenceDate = null;
+    let dateMissing = false;
     if (!rofrApplies) {
       applicable = false;
     } else if (resp.status === 'waived') {
-      applicable = true;
-      referenceDate = rofrExpiry !== null && rofrExpiry < resp.at ? rofrExpiry : resp.at;
+      if (!dates.isValidDateOnly(resp.at)) {
+        dateMissing = true;
+      } else {
+        applicable = true;
+        referenceDate = rofrExpiry !== null && rofrExpiry < resp.at ? rofrExpiry : resp.at;
+      }
     } else if (resp.status === 'none' && rofrNoticeState === 'SATISFIED' && facts.as_of > rofrExpiry) {
       applicable = true;
       referenceDate = rofrExpiry;
     }
-    if (!applicable) {
+    if (dateMissing) {
+      mk(
+        'C-ROFR-WINDOW',
+        'UNKNOWN',
+        'The date the Company waived its right of first refusal is missing, so the completion window cannot be computed.'
+      );
+    } else if (!applicable) {
       mk(
         'C-ROFR-WINDOW',
         'NOT_APPLICABLE',
@@ -732,7 +762,7 @@ function evaluate(facts, rulebook, calendar) {
       not_started: ['OUTSTANDING', 'KYC checks have not started.'],
       unknown: ['UNKNOWN', 'KYC status is not known.'],
     };
-    const [state, reason] = map[facts.buyer.kyc];
+    const [state, reason] = map[facts.buyer.kyc] || ['UNKNOWN', 'KYC status is not recognized.'];
     const extra = state === 'OUTSTANDING' ? { action: { owner: 'Ops', text: 'Complete KYC / AML checks for the transferee', due: null } } : {};
     mk('B-KYC', state, reason, extra);
   }
@@ -744,7 +774,7 @@ function evaluate(facts, rulebook, calendar) {
       pending: ['OUTSTANDING', 'Sanctions screening is in progress.'],
       unknown: ['UNKNOWN', 'Sanctions screening status is not known.'],
     };
-    const [state, reason] = map[facts.buyer.sanctions];
+    const [state, reason] = map[facts.buyer.sanctions] || ['UNKNOWN', 'Sanctions screening status is not recognized.'];
     const extra = state === 'OUTSTANDING' ? { action: { owner: 'Ops', text: 'Complete sanctions screening for the transferee', due: null } } : {};
     mk('B-SANCTIONS', state, reason, extra);
   }
@@ -758,7 +788,7 @@ function evaluate(facts, rulebook, calendar) {
         not_accredited: ['FAILED', 'The transferee is not an accredited investor.'],
         unknown: ['UNKNOWN', 'Accredited investor status is not known.'],
       };
-      const [state, reason] = map[facts.buyer.accredited];
+      const [state, reason] = map[facts.buyer.accredited] || ['UNKNOWN', 'Accredited investor status is not recognized.'];
       mk('B-ACCREDITED', state, reason);
     }
   }

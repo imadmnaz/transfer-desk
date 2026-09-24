@@ -113,6 +113,20 @@ function receivedDate(sentAtStr, calendar) {
   return { date, working, onTime };
 }
 
+// Fail-safe guards for facts the UI (or a scenario override) can leave
+// missing or malformed: a status of "delivered" with no `sent_at`, a
+// "waived" response with no `at`, etc. Every date parse in engine.js checks
+// one of these first instead of handing a bad string to toUTC(), which
+// would throw on split()/undefined rather than escalating like CLAUDE.md's
+// fail-safe principle requires.
+function isValidDateOnly(s) {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+function isValidTimestamp(s) {
+  return typeof s === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
+}
+
 function compareDates(a, b) {
   if (a < b) return -1;
   if (a > b) return 1;
@@ -139,6 +153,8 @@ const DatesModule = {
   compareDates,
   formatReadable,
   businessDaysWorking,
+  isValidDateOnly,
+  isValidTimestamp,
 };
 
 // Browser wrapper: plumbing only, the functions above are untouched. Node

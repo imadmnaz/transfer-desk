@@ -55,3 +55,18 @@ Every review of this project is recorded here: what was found, what I decided, a
 Held-out cases H01 to H10, written independently by a second model from the documents and conventions, without access to the engine. Results: 10/10 verdicts, 10/10 fully matched including dates.
 
 A field-name alias table in `tests/engine.test.js` (`HELD_OUT_DATE_FIELD_ALIASES`) translates the held-out cases' date field names (for example `receipt_date`, `deemed_date`) to the engine's own (`receipt`, `deemed_at`) before comparison; no expected value in `data/heldout.json` was changed.
+
+## Round 5: interface testing
+
+**Reviewer:** interface testing (a human clicking through the deal form), reported as four reproduction steps.
+**Scope:** `engine/engine.js`, `engine/dates.js`, `app.js`'s affiliate-buyer default.
+
+Found in interface testing: the engine threw on incomplete or inconsistent facts instead of escalating. A Permitted Transferee whose notice fact was still at its `not_applicable` default threw `Unhandled notice status for F-PERMITTED-NOTICE: not_applicable`; a `rofr_notice` or `rofr_response` marked `delivered` / `waived` with no date threw on `undefined.split(...)`. Any of these could be produced by editing the deal form (for example, switching the buyer to an affiliate before its notice fields are filled in), and the page showed nothing useful when it happened.
+
+| # | Finding | Decision | Change made |
+|---|---|---|---|
+| 1 | The engine threw instead of returning a safe result whenever a fact was missing or in a shape it did not expect. | Accepted | Every date parse in `engine.js` (`gp_consent.requested_at`, `rofr_notice.sent_at`, `rofr_response.at`, and the two permitted-notice `sent_at` fields) is now guarded by `dates.isValidTimestamp` / `dates.isValidDateOnly` (new in `dates.js`) and returns `UNKNOWN` with a reason naming the missing fact instead of throwing. Every remaining `throw` in a status switch or lookup map (`consentOutcome`, `evaluatePermittedNotice`, the ROFR notice and response switches, `B-KYC`, `B-SANCTIONS`, `B-ACCREDITED`) now falls back to `UNKNOWN` instead. A Permitted Transferee's notice still at `not_applicable` is now treated the same as `not_sent`: `OUTSTANDING`, with the action to give notice. |
+| 2 | Choosing an affiliate buyer left the fund and company permitted-notice facts at their unrelated-buyer default (`not_applicable`) instead of a value the affiliate path expects. | Accepted | `app.js`'s buyer picker now resets both `gp_permitted_notice` and `permitted_notice` to `not_sent` when the chosen buyer is the seller's affiliate. |
+| 3 | No automated coverage caught either of the above. | Accepted | `tests/fuzz.test.js` adds the four regression cases verbatim (missing `requested_at`, missing `sent_at` on the Transfer Notice, missing `at` on a waiver, and the affiliate/`not_applicable` notice) plus a fuzz sweep that merges every value of every deal-form control (buyer, seller, type, each consent and notice status including a version with the date left out, ROFR response, and every buyer check) onto every one of the 31 scenarios (1,550 combinations) and asserts the engine never throws and never clears an unsafe result to `CHECKLIST_READY`. A Playwright script (run through `npx`, not added to the repo) loaded every scenario, clicked every segmented-control button, and filled and cleared every date field on the deal form: 504 interactions across all 31 scenarios, 0 console or page errors, 0 occurrences of an error message on the page. |
+
+All 31 scenarios and all 10 held-out cases still pass with the same expected answers; none of this changed an existing outcome, only what happens on facts none of them exercised.
