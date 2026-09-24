@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Transfer Desk</title>
+<meta name="description" content="Clears SPV secondary transfers against every document that governs them.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="page">
+
+  <header class="bar">
+    <span class="wordmark">Transfer Desk</span>
+    <div class="scenario-control">
+      <button id="scenario-chip" class="scenario-chip" type="button" aria-haspopup="dialog" aria-expanded="false">
+        <span class="id" id="scenario-id">T09</span>
+        <span id="scenario-title-text">Sale to a Competitor with every consent in hand</span>
+      </button>
+      <button id="change-link" class="change-link" type="button">Change</button>
+    </div>
+    <button id="theme-toggle" class="theme-toggle" type="button">Dark</button>
+  </header>
+
+  <p class="tag">Synthetic documents. Not legal advice.</p>
+
+  <dl id="register" class="register"></dl>
+
+  <section id="finding" class="finding" aria-live="polite"></section>
+
+  <section id="review" class="review"></section>
+
+  <section id="notes-section"></section>
+
+  <section id="checklist-section" class="checklist-section">
+    <div id="checklist-heading" class="gate-label">Checklist</div>
+    <ol id="checklist" class="checklist"></ol>
+  </section>
+
+  <section id="audit-section" class="audit-section">
+    <button id="audit-toggle" class="audit-toggle" type="button" aria-expanded="false">Audit record</button>
+    <pre id="audit-json" class="audit-json" hidden></pre>
+  </section>
+
+  <footer class="footer">
+    <button id="run-tests" class="run-tests" type="button">Run all tests</button>
+    <div id="scorecard" class="scorecard" hidden></div>
+  </footer>
+
+</main>
+
+<div id="scenario-picker" class="scenario-picker" hidden role="dialog" aria-modal="true" aria-label="Choose a scenario">
+  <div class="picker-header">
+    <input id="scenario-search" type="text" placeholder="Search scenarios" aria-label="Search scenarios">
+    <button id="picker-close" type="button">Close</button>
+  </div>
+  <ul id="scenario-list" class="scenario-list"></ul>
+</div>
+
+<script src="engine/dates.js"></script>
+<script src="engine/engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

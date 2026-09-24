@@ -4,8 +4,14 @@
 // No I/O, no Date.now(). The demo page and the test runner both import this
 // file and call the same exported evaluate() function.
 
-const crypto = require('crypto');
-const dates = require('./dates.js');
+// Browser wrapper: in Node (the test runner) this is a plain require. In the
+// browser, dates.js has already run as a <script> tag and put its exports on
+// window; there is no Node "crypto" module there, so sha256Hex() below falls
+// back to a pure-JS implementation. None of the rule logic in this file
+// changes between environments.
+const isNode = typeof module !== 'undefined' && !!module.exports;
+const crypto = isNode ? require('crypto') : null;
+const dates = isNode ? require('./dates.js') : (typeof window !== 'undefined' ? window.TransferDeskDates : undefined);
 
 const ENGINE_VERSION = '1.0.0';
 
@@ -67,6 +73,115 @@ function usd(n) {
   return `US$${n.toLocaleString('en-US')}`;
 }
 
+// Pure, synchronous SHA-256 (FIPS 180-4), used only as the browser fallback
+// for sha256Hex() below when Node's "crypto" module is unavailable. Browsers
+// only expose an async digest (SubtleCrypto), which evaluate() cannot use
+// and stay a synchronous pure function, so this produces the same standard
+// SHA-256 digest by hand.
+function sha256HexPure(message) {
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+  const bytes = [];
+  for (let i = 0; i < message.length; i++) {
+    let c = message.codePointAt(i);
+    if (c > 0xffff) i++;
+    if (c < 0x80) {
+      bytes.push(c);
+    } else if (c < 0x800) {
+      bytes.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+    } else if (c < 0x10000) {
+      bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    } else {
+      bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 0x3f), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
+  }
+
+  const bitLen = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+  for (let i = 7; i >= 0; i--) bytes.push(Number((BigInt(bitLen) >> BigInt(i * 8)) & 0xffn));
+
+  const rotr = (x, n) => (x >>> n) | (x << (32 - n));
+
+  for (let chunkStart = 0; chunkStart < bytes.length; chunkStart += 64) {
+    const w = new Array(64).fill(0);
+    for (let i = 0; i < 16; i++) {
+      w[i] =
+        ((bytes[chunkStart + i * 4] << 24) |
+          (bytes[chunkStart + i * 4 + 1] << 16) |
+          (bytes[chunkStart + i * 4 + 2] << 8) |
+          bytes[chunkStart + i * 4 + 3]) >>>
+        0;
+    }
+    for (let i = 16; i < 64; i++) {
+      const s0 = rotr(w[i - 15], 7) ^ rotr(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+      const s1 = rotr(w[i - 2], 17) ^ rotr(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+      w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let i = 0; i < 64; i++) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h + S1 + ch + K[i] + w[i]) >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + temp1) >>> 0;
+      d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+  }
+
+  return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => x.toString(16).padStart(8, '0')).join('');
+}
+
+function sha256Hex(str) {
+  if (crypto) return crypto.createHash('sha256').update(str).digest('hex');
+  return sha256HexPure(str);
+}
+
+// --- Findings (headline text) ---------------------------------------------
+//
+// The headline (decision.headline) states the fact and its consequence in
+// plain English, never a rule's technical "reason" or title. The wording for
+// each rule/state lives in rulebook.json's rule.findings (legal content, per
+// CLAUDE.md section 6), keyed by state name, or by an explicit finding_key
+// on the result when one rule's FAILED or UNKNOWN covers more than one shape
+// (see the findingKey uses above). A template of exactly "{action}" is
+// replaced with that result's own action text, so it stays exactly right for
+// the fact pattern that produced it instead of being re-described here.
+
+function humanizeText(text) {
+  return text.replace(/\b\d{4}-\d{2}-\d{2}\b/g, (m) => dates.formatReadable(m));
+}
+
+function ensureSentence(text) {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
+function buildFinding(result, ruleMap) {
+  const rule = ruleMap.get(result.rule_id);
+  const findings = rule.findings || {};
+  const template = findings[result.finding_key] || findings[result.state];
+  if (!template) return null;
+  if (template === '{action}') {
+    return result.action ? ensureSentence(humanizeText(result.action.text)) : null;
+  }
+  return humanizeText(template);
+}
+
 function consentOutcome(status, partyLabel, silenceCitationText) {
   switch (status) {
     case 'received':
@@ -117,6 +232,11 @@ function evaluate(facts, rulebook, calendar) {
       cure: extra.cure || null,
       notes: extra.notes || [],
       computed: extra.computed || null,
+      // Selects which entry of rulebook.json's rule.findings the headline
+      // uses for this result, when a rule has more than one FAILED/UNKNOWN
+      // shape (e.g. C-ROFR-RESPONSE: exercised outright vs. too-early
+      // completion). Defaults to the state name in buildFinding() below.
+      finding_key: extra.findingKey || null,
     };
     results.push(result);
     return result;
@@ -480,14 +600,16 @@ function evaluate(facts, rulebook, calendar) {
           mk(
             'C-ROFR-RESPONSE',
             'FAILED',
-            'The Company has exercised its right of first refusal in whole. The Company is buying the interest; the sale to this transferee cannot proceed.'
+            'The Company has exercised its right of first refusal in whole. The Company is buying the interest; the sale to this transferee cannot proceed.',
+            { findingKey: 'FAILED_EXERCISED' }
           );
           break;
         case 'exercised_partial':
           mk(
             'C-ROFR-RESPONSE',
             'UNKNOWN',
-            'The Company has purported to exercise its right of first refusal in part. SA 4.3 permits exercise in whole only; a purported partial exercise needs legal review.'
+            'The Company has purported to exercise its right of first refusal in part. SA 4.3 permits exercise in whole only; a purported partial exercise needs legal review.',
+            { findingKey: 'UNKNOWN_PARTIAL' }
           );
           break;
         case 'unknown':
@@ -508,7 +630,7 @@ function evaluate(facts, rulebook, calendar) {
                 'C-ROFR-RESPONSE',
                 'FAILED',
                 `Completion is scheduled for ${dates.formatReadable(t.proposed_completion)}, on or before the end of the exercise period on ${dates.formatReadable(rofrExpiry)}.`,
-                { cure: `Move completion to after ${rofrExpiry} or obtain a written waiver`, computed }
+                { cure: `Move completion to after ${rofrExpiry} or obtain a written waiver`, computed, findingKey: 'FAILED_TOO_EARLY' }
               );
             } else {
               mk(
@@ -688,21 +810,30 @@ function evaluate(facts, rulebook, calendar) {
   else if (hasUnknownOrContradictory) verdict = 'ESCALATE';
   else verdict = 'CHECKLIST_READY';
 
+  function withOtherIssues(finding, extraCount) {
+    if (extraCount <= 0) return finding;
+    const trimmed = finding.replace(/[.!?]$/, '');
+    return `${trimmed} and ${extraCount} other issue${extraCount === 1 ? '' : 's'} below.`;
+  }
+
   let headline;
   if (verdict === 'BLOCKED') {
-    const failedTitles = results.filter((r) => r.state === 'FAILED').map((r) => ruleMap.get(r.rule_id).title);
-    headline = `Blocked: ${failedTitles.join('; ')}.`;
+    const failed = results.filter((r) => r.state === 'FAILED');
+    const finding = buildFinding(failed[0], ruleMap) || `Blocked: ${ruleMap.get(failed[0].rule_id).title}.`;
+    headline = withOtherIssues(finding, failed.length - 1);
   } else if (verdict === 'ESCALATE') {
-    const escalatedTitles = results
-      .filter((r) => r.state === 'UNKNOWN' || r.state === 'CONTRADICTORY')
-      .map((r) => ruleMap.get(r.rule_id).title);
-    headline = `Needs legal judgement: ${escalatedTitles.join('; ')}.`;
+    const escalated = results.filter((r) => r.state === 'UNKNOWN' || r.state === 'CONTRADICTORY');
+    const finding = buildFinding(escalated[0], ruleMap) || `Needs legal judgement: ${ruleMap.get(escalated[0].rule_id).title}.`;
+    headline = withOtherIssues(finding, escalated.length - 1);
   } else {
-    const outstandingCount = results.filter((r) => r.state === 'OUTSTANDING').length;
-    headline =
-      outstandingCount > 0
-        ? `${outstandingCount} action${outstandingCount === 1 ? '' : 's'} outstanding before the GP can record this transfer.`
-        : 'Every condition is evidenced. Recording in the Register is a human decision.';
+    const outstanding = results.filter((r) => r.state === 'OUTSTANDING');
+    if (outstanding.length > 0) {
+      headline =
+        buildFinding(outstanding[0], ruleMap) ||
+        `${outstanding.length} action${outstanding.length === 1 ? '' : 's'} outstanding before the GP can record this transfer.`;
+    } else {
+      headline = 'Every condition is evidenced. Recording in the Register is a human decision.';
+    }
   }
 
   // --- Checklist ------------------------------------------------------------
@@ -738,11 +869,7 @@ function evaluate(facts, rulebook, calendar) {
 
   // --- Audit ------------------------------------------------------------
 
-  const auditId = crypto
-    .createHash('sha256')
-    .update(`${stableStringify(facts)}|${rulebook.rulebook_version}`)
-    .digest('hex')
-    .slice(0, 16);
+  const auditId = sha256Hex(`${stableStringify(facts)}|${rulebook.rulebook_version}`).slice(0, 16);
 
   return {
     verdict,
@@ -761,4 +888,11 @@ function evaluate(facts, rulebook, calendar) {
   };
 }
 
-module.exports = { evaluate, deepMergeFacts, ENGINE_VERSION };
+const EngineModule = { evaluate, deepMergeFacts, ENGINE_VERSION };
+
+if (isNode) {
+  module.exports = EngineModule;
+}
+if (typeof window !== 'undefined') {
+  window.TransferDeskEngine = EngineModule;
+}

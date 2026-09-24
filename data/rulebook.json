@@ -1,18 +1,39 @@
 {
   "rulebook_version": "LPA v1.1 | SA 2025-11-20 | Harbour SL 2025-03-05",
   "gates": [
-    { "id": "preliminary", "label": "Preliminary" },
-    { "id": "fund", "label": "Fund" },
-    { "id": "side_letter", "label": "Side letter" },
-    { "id": "company", "label": "Company" },
-    { "id": "buyer", "label": "Buyer and regulatory" }
+    {
+      "id": "preliminary",
+      "label": "Preliminary"
+    },
+    {
+      "id": "fund",
+      "label": "Fund"
+    },
+    {
+      "id": "side_letter",
+      "label": "Side letter"
+    },
+    {
+      "id": "company",
+      "label": "Company"
+    },
+    {
+      "id": "buyer",
+      "label": "Buyer and regulatory"
+    }
   ],
   "cross_cutting_notes": [
     {
       "id": "SA-4.6-INDEPENDENCE",
       "trigger": "The company gate is evaluated for a sale to anyone other than an SA Permitted Transferee, so both C-CONSENT and the right of first refusal rules (C-ROFR-NOTICE, C-ROFR-RESPONSE, C-ROFR-WINDOW) apply.",
       "text": "Company consent and the right of first refusal are independent gates (SA 4.6). A waiver of the right of first refusal is not consent, and consent is not a waiver of the right of first refusal.",
-      "citations": [{ "doc": "SA", "section": "4.6", "version": "2025-11-20" }]
+      "citations": [
+        {
+          "doc": "SA",
+          "section": "4.6",
+          "version": "2025-11-20"
+        }
+      ]
     }
   ],
   "rules": [
@@ -22,8 +43,16 @@
       "title": "Classification as a Transfer",
       "description": "A sale or a pledge is a Transfer under both the LPA and the Stockholders' Agreement, whatever the operator calls it. If the operator has classified the proposal as not a Transfer, that classification is rejected and the proposal is evaluated as a Transfer. This never changes the verdict on its own.",
       "citations": [
-        { "doc": "LPA", "section": "1.1:Transfer", "version": "1.1" },
-        { "doc": "SA", "section": "1.1:Transfer", "version": "2025-11-20" }
+        {
+          "doc": "LPA",
+          "section": "1.1:Transfer",
+          "version": "1.1"
+        },
+        {
+          "doc": "SA",
+          "section": "1.1:Transfer",
+          "version": "2025-11-20"
+        }
       ],
       "params": {}
     },
@@ -33,7 +62,10 @@
       "title": "Document version confirmed",
       "description": "The operator must confirm that the evidence gathered was prepared against the current version of the fund, company and side letter documents. If that cannot be confirmed, the evidence may have been prepared against a superseded version and the case must be escalated.",
       "citations": [],
-      "params": {}
+      "params": {},
+      "findings": {
+        "UNKNOWN": "It is not confirmed that the evidence was checked against the current version of the governing documents. A lawyer must confirm which version applies before this can proceed."
+      }
     },
     {
       "id": "S-SCOPE",
@@ -41,17 +73,33 @@
       "title": "Side letter scope",
       "description": "The Harbour side letter applies only where the transferor is Harbour Family Office LLC. Rights under it are personal to Harbour and are not available to any other Limited Partner, even one who claims to rely on it.",
       "citations": [
-        { "doc": "SL", "section": "3", "version": "2025-03-05" },
-        { "doc": "LPA", "section": "12.4", "version": "1.1" }
+        {
+          "doc": "SL",
+          "section": "3",
+          "version": "2025-03-05"
+        },
+        {
+          "doc": "LPA",
+          "section": "12.4",
+          "version": "1.1"
+        }
       ],
-      "params": { "applies_to_transferor": "Harbour Family Office LLC" }
+      "params": {
+        "applies_to_transferor": "Harbour Family Office LLC"
+      }
     },
     {
       "id": "S-HARBOUR-TRANSFEREE",
       "gate": "side_letter",
       "title": "Harbour Transferee exemption from GP consent",
       "description": "If the side letter applies and the transferee is a Harbour Transferee, meaning an Affiliate of Harbour or a fund or account managed or advised by Harbour Capital Advisers LLC, the General Partner's consent is not required. This has no effect on the company gate.",
-      "citations": [{ "doc": "SL", "section": "1", "version": "2025-03-05" }],
+      "citations": [
+        {
+          "doc": "SL",
+          "section": "1",
+          "version": "2025-03-05"
+        }
+      ],
       "params": {}
     },
     {
@@ -60,10 +108,24 @@
       "title": "Harbour deemed consent",
       "description": "Where the side letter applies and Harbour has requested the General Partner's consent, that consent is deemed given at the end of the tenth Business Day after receipt of a complete request, if the General Partner has not responded. The clock only starts once the request is complete. Silence is never consent for any other Limited Partner.",
       "citations": [
-        { "doc": "SL", "section": "2", "version": "2025-03-05" },
-        { "doc": "LPA", "section": "8.8", "version": "1.1" }
+        {
+          "doc": "SL",
+          "section": "2",
+          "version": "2025-03-05"
+        },
+        {
+          "doc": "LPA",
+          "section": "8.8",
+          "version": "1.1"
+        }
       ],
-      "params": { "response_period_business_days": 10 }
+      "params": {
+        "response_period_business_days": 10
+      },
+      "findings": {
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "It cannot be shown that Harbour's request for General Partner consent was complete. A lawyer must decide whether the ten Business Day deemed-consent clock has started."
+      }
     },
     {
       "id": "F-CONSENT",
@@ -71,27 +133,70 @@
       "title": "General Partner consent",
       "description": "Every Transfer needs the General Partner's prior written consent, unless the transferee is an LPA Permitted Transferee (an Affiliate, a family trust, or an estate) or a Harbour Transferee under the side letter. Silence is never consent unless the side letter's deemed-consent mechanism applies.",
       "citations": [
-        { "doc": "LPA", "section": "8.1", "version": "1.1" },
-        { "doc": "LPA", "section": "8.8", "version": "1.1" },
-        { "doc": "LPA", "section": "1.1:Permitted Transferee", "version": "1.1" }
+        {
+          "doc": "LPA",
+          "section": "8.1",
+          "version": "1.1"
+        },
+        {
+          "doc": "LPA",
+          "section": "8.8",
+          "version": "1.1"
+        },
+        {
+          "doc": "LPA",
+          "section": "1.1:Permitted Transferee",
+          "version": "1.1"
+        }
       ],
-      "params": {}
+      "params": {},
+      "findings": {
+        "FAILED": "The General Partner has refused consent. This transfer cannot proceed.",
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "It is not clear whether the General Partner has consented. A lawyer must decide whether the evidence is enough to treat consent as given.",
+        "CONTRADICTORY": "The evidence of the General Partner's consent conflicts. A lawyer must decide which evidence to rely on."
+      }
     },
     {
       "id": "F-PERMITTED-NOTICE",
       "gate": "fund",
       "title": "Permitted transfer notice to the General Partner",
       "description": "A Transfer to an LPA Permitted Transferee needs no General Partner consent, but the General Partner must receive written notice at least five clear Business Days before completion. The earliest permitted completion is the 6th Business Day after receipt.",
-      "citations": [{ "doc": "LPA", "section": "8.2", "version": "1.1" }],
-      "params": { "clear_days": 5, "earliest_completion_rule": "the (clear_days + 1)th Business Day after receipt" }
+      "citations": [
+        {
+          "doc": "LPA",
+          "section": "8.2",
+          "version": "1.1"
+        }
+      ],
+      "params": {
+        "clear_days": 5,
+        "earliest_completion_rule": "the (clear_days + 1)th Business Day after receipt"
+      },
+      "findings": {
+        "FAILED": "Completion is scheduled before the General Partner's notice period has run. This transfer cannot proceed as planned.",
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "It cannot be shown that the General Partner received the permitted-transfer notice. A lawyer must decide whether the notice period has started."
+      }
     },
     {
       "id": "F-MIN-HOLDING",
       "gate": "fund",
       "title": "Minimum holding after a partial transfer",
       "description": "After a partial Transfer, both the transferor's retained Capital Contribution and the transferee's new Capital Contribution must be at least US$10,000. The transferred amount is the transferor's Capital Contribution multiplied by the fraction Transferred, and the balance remains attributable to the transferor.",
-      "citations": [{ "doc": "LPA", "section": "8.3", "version": "1.1" }],
-      "params": { "minimum_capital_contribution": 10000 }
+      "citations": [
+        {
+          "doc": "LPA",
+          "section": "8.3",
+          "version": "1.1"
+        }
+      ],
+      "params": {
+        "minimum_capital_contribution": 10000
+      },
+      "findings": {
+        "FAILED": "This transfer would leave the transferor or the transferee holding less than the US$10,000 minimum. This transfer cannot proceed as planned."
+      }
     },
     {
       "id": "F-BO-LIMIT",
@@ -99,10 +204,24 @@
       "title": "Beneficial Owner Limit",
       "description": "A Transfer must not cause the Partnership to exceed the Beneficial Owner Limit of 95, measured immediately after giving effect to the Transfer. Not applicable to a pledge.",
       "citations": [
-        { "doc": "LPA", "section": "8.4", "version": "1.1" },
-        { "doc": "LPA", "section": "1.1:Beneficial Owner Limit", "version": "1.1" }
+        {
+          "doc": "LPA",
+          "section": "8.4(d)",
+          "version": "1.1"
+        },
+        {
+          "doc": "LPA",
+          "section": "1.1:Beneficial Owner Limit",
+          "version": "1.1"
+        }
       ],
-      "params": { "beneficial_owner_limit": 95 }
+      "params": {
+        "beneficial_owner_limit": 95
+      },
+      "findings": {
+        "FAILED": "This transfer would take the fund over its 95 Beneficial Owner Limit. This transfer cannot proceed as planned.",
+        "UNKNOWN": "The current number of beneficial owners is not known. A lawyer or the General Partner must confirm the count before this can proceed."
+      }
     },
     {
       "id": "C-COMPETITOR",
@@ -110,11 +229,28 @@
       "title": "Transferee is not a Competitor",
       "description": "No Transfer or Indirect Transfer may be made to a Competitor listed in Schedule 2 of the Stockholders' Agreement, or an Affiliate of one, whether or not the Company has consented to it.",
       "citations": [
-        { "doc": "SA", "section": "3.3", "version": "2025-11-20" },
-        { "doc": "SA", "section": "Schedule 2", "version": "2025-11-20" },
-        { "doc": "SA", "section": "1.1:Competitor", "version": "2025-11-20" }
+        {
+          "doc": "SA",
+          "section": "3.3",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "Schedule 2",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "1.1:Competitor",
+          "version": "2025-11-20"
+        }
       ],
-      "params": {}
+      "params": {},
+      "findings": {
+        "FAILED": "The buyer is a named Competitor of Helion. This transfer cannot proceed.",
+        "UNKNOWN": "It is not known whether the buyer is a Competitor of Helion. A lawyer must decide, by reference to SA Schedule 2, before this can proceed."
+      },
+      "no_cure": "Nothing on these facts. Helion's consent cannot cure a Competitor sale."
     },
     {
       "id": "C-CONSENT",
@@ -122,19 +258,51 @@
       "title": "Company consent",
       "description": "Every Indirect Transfer needs the Company's prior written consent, approved by the Board, unless the transferee is an SA Permitted Transferee (an Affiliate, a family trust, or an estate). A Harbour Transferee under the side letter is not an SA Permitted Transferee. The Company's silence is never consent.",
       "citations": [
-        { "doc": "SA", "section": "3.1", "version": "2025-11-20" },
-        { "doc": "SA", "section": "3.4", "version": "2025-11-20" },
-        { "doc": "SA", "section": "1.1:Permitted Transferee", "version": "2025-11-20" }
+        {
+          "doc": "SA",
+          "section": "3.1",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "3.4",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "1.1:Permitted Transferee",
+          "version": "2025-11-20"
+        }
       ],
-      "params": {}
+      "params": {},
+      "findings": {
+        "FAILED": "Helion has refused consent. This transfer cannot proceed.",
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "It is not clear whether Helion has consented. A lawyer must decide whether the evidence is enough to treat consent as given.",
+        "CONTRADICTORY": "The evidence of Helion's consent conflicts. A lawyer must decide which evidence to rely on."
+      }
     },
     {
       "id": "C-PERMITTED-NOTICE",
       "gate": "company",
       "title": "Permitted transferee notice to the Company",
       "description": "An Indirect Transfer to an SA Permitted Transferee needs no Company consent, but the Company must receive written notice, identifying the transferee, at least ten clear Business Days before it takes effect. The earliest permitted completion is the 11th Business Day after receipt.",
-      "citations": [{ "doc": "SA", "section": "3.2", "version": "2025-11-20" }],
-      "params": { "clear_days": 10, "earliest_completion_rule": "the (clear_days + 1)th Business Day after receipt" }
+      "citations": [
+        {
+          "doc": "SA",
+          "section": "3.2",
+          "version": "2025-11-20"
+        }
+      ],
+      "params": {
+        "clear_days": 10,
+        "earliest_completion_rule": "the (clear_days + 1)th Business Day after receipt"
+      },
+      "findings": {
+        "FAILED": "Completion is scheduled before Helion's notice period has run. This transfer cannot proceed as planned.",
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "It cannot be shown that Helion received the permitted-transferee notice. A lawyer must decide whether the notice period has started."
+      }
     },
     {
       "id": "C-ROFR-NOTICE",
@@ -142,11 +310,27 @@
       "title": "Transfer Notice for the right of first refusal",
       "description": "Before an Indirect Transfer by way of sale to anyone other than an SA Permitted Transferee, the Investment Vehicle must deliver a complete Transfer Notice to the Company. The sender bears the burden of proving delivery. Not applicable to a pledge.",
       "citations": [
-        { "doc": "SA", "section": "4.1", "version": "2025-11-20" },
-        { "doc": "SA", "section": "4.2", "version": "2025-11-20" },
-        { "doc": "SA", "section": "9.1", "version": "2025-11-20" }
+        {
+          "doc": "SA",
+          "section": "4.1",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "4.2",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "9.1",
+          "version": "2025-11-20"
+        }
       ],
-      "params": {}
+      "params": {},
+      "findings": {
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "It cannot be shown that a complete Transfer Notice reached Helion. A lawyer must decide whether the right of first refusal exercise period has started."
+      }
     },
     {
       "id": "C-ROFR-RESPONSE",
@@ -154,51 +338,124 @@
       "title": "Company's response to the right of first refusal",
       "description": "Once a complete Transfer Notice has been delivered, the Company may exercise its right to buy the whole, and not part, of the interest by written notice within twenty Business Days after receipt, or waive it. A purported partial exercise is not effective under the Agreement and needs legal review.",
       "citations": [
-        { "doc": "SA", "section": "4.2", "version": "2025-11-20" },
-        { "doc": "SA", "section": "4.3", "version": "2025-11-20" },
-        { "doc": "SA", "section": "4.4", "version": "2025-11-20" }
+        {
+          "doc": "SA",
+          "section": "4.2",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "4.3",
+          "version": "2025-11-20"
+        },
+        {
+          "doc": "SA",
+          "section": "4.4",
+          "version": "2025-11-20"
+        }
       ],
-      "params": { "exercise_period_business_days": 20 }
+      "params": {
+        "exercise_period_business_days": 20
+      },
+      "findings": {
+        "FAILED_EXERCISED": "Helion is exercising its right of first refusal and buying the interest itself. This transfer cannot proceed.",
+        "FAILED_TOO_EARLY": "Completion is scheduled before Helion's right of first refusal expires. This transfer cannot proceed as planned.",
+        "UNKNOWN_PARTIAL": "Helion has tried to exercise its right of first refusal over part of the interest. A lawyer must decide what that does, because SA 4.3 allows exercise in whole only.",
+        "UNKNOWN": "It is not known whether Helion has responded to the Transfer Notice. A lawyer must decide whether the right of first refusal exercise period is still running.",
+        "OUTSTANDING": "{action}"
+      }
     },
     {
       "id": "C-ROFR-WINDOW",
       "gate": "company",
       "title": "Completion window after the right of first refusal",
       "description": "Once the right of first refusal has expired or been waived, completion must occur within 45 Business Days after the end of the exercise period, or after the date of an earlier waiver. After that, a fresh Transfer Notice is required.",
-      "citations": [{ "doc": "SA", "section": "4.5", "version": "2025-11-20" }],
-      "params": { "completion_window_business_days": 45 }
+      "citations": [
+        {
+          "doc": "SA",
+          "section": "4.5",
+          "version": "2025-11-20"
+        }
+      ],
+      "params": {
+        "completion_window_business_days": 45
+      },
+      "findings": {
+        "FAILED": "Completion falls outside the 45 Business Day window after the right of first refusal. This transfer cannot proceed as planned."
+      }
     },
     {
       "id": "B-KYC",
       "gate": "buyer",
       "title": "KYC / AML checks",
       "description": "The transferee must complete the General Partner's investor onboarding procedures, including anti-money laundering and know-your-customer checks, to the General Partner's satisfaction.",
-      "citations": [{ "doc": "LPA", "section": "8.4", "version": "1.1" }],
-      "params": {}
+      "citations": [
+        {
+          "doc": "LPA",
+          "section": "8.4(b)",
+          "version": "1.1"
+        }
+      ],
+      "params": {},
+      "findings": {
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "KYC / AML status is not known. A lawyer or the General Partner must confirm it before this can proceed."
+      }
     },
     {
       "id": "B-SANCTIONS",
       "gate": "buyer",
       "title": "Sanctions screening",
       "description": "The transferee must clear sanctions screening to the General Partner's satisfaction. A confirmed hit fails the Transfer outright, with no cure.",
-      "citations": [{ "doc": "LPA", "section": "8.4", "version": "1.1" }],
-      "params": {}
+      "citations": [
+        {
+          "doc": "LPA",
+          "section": "8.4(b)",
+          "version": "1.1"
+        }
+      ],
+      "params": {},
+      "findings": {
+        "FAILED": "Sanctions screening has returned a hit on the buyer. This transfer cannot proceed.",
+        "OUTSTANDING": "{action}",
+        "UNKNOWN": "Sanctions screening status is not known. A lawyer or the General Partner must confirm it before this can proceed."
+      },
+      "no_cure": "Nothing on these facts. A confirmed sanctions hit has no cure under these documents."
     },
     {
       "id": "B-ACCREDITED",
       "gate": "buyer",
       "title": "Accredited investor status",
       "description": "The transferee must be an accredited investor as defined in Rule 501(a) of Regulation D. Not applicable to a pledge unless and until the security is enforced.",
-      "citations": [{ "doc": "LPA", "section": "8.4", "version": "1.1" }],
-      "params": {}
+      "citations": [
+        {
+          "doc": "LPA",
+          "section": "8.4(f)",
+          "version": "1.1"
+        }
+      ],
+      "params": {},
+      "findings": {
+        "FAILED": "The buyer is not confirmed as an accredited investor. This transfer cannot proceed.",
+        "UNKNOWN": "It is not known whether the buyer is an accredited investor. A lawyer or the General Partner must confirm it before this can proceed."
+      }
     },
     {
       "id": "B-TAX-FORM",
       "gate": "buyer",
       "title": "Tax form",
       "description": "The transferee must deliver a properly completed IRS Form W-9 or applicable Form W-8. Not applicable to a pledge unless and until the security is enforced.",
-      "citations": [{ "doc": "LPA", "section": "8.4", "version": "1.1" }],
-      "params": {}
+      "citations": [
+        {
+          "doc": "LPA",
+          "section": "8.4(c)",
+          "version": "1.1"
+        }
+      ],
+      "params": {},
+      "findings": {
+        "OUTSTANDING": "{action}"
+      }
     },
     {
       "id": "B-ADHERENCE",
@@ -206,10 +463,21 @@
       "title": "Transfer and Adherence Agreement",
       "description": "The transferee must execute and deliver a Transfer and Adherence Agreement. Not applicable to a pledge unless and until the security is enforced.",
       "citations": [
-        { "doc": "LPA", "section": "8.4", "version": "1.1" },
-        { "doc": "LPA", "section": "1.1:Transfer and Adherence Agreement", "version": "1.1" }
+        {
+          "doc": "LPA",
+          "section": "8.4(a)",
+          "version": "1.1"
+        },
+        {
+          "doc": "LPA",
+          "section": "1.1:Transfer and Adherence Agreement",
+          "version": "1.1"
+        }
       ],
-      "params": {}
+      "params": {},
+      "findings": {
+        "OUTSTANDING": "{action}"
+      }
     },
     {
       "id": "X-OVERRIDE",

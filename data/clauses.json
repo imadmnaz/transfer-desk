@@ -118,6 +118,36 @@
         "page": 4,
         "heading": "14.2 Notices",
         "text": "Any notice or request to the General Partner under this Agreement must be delivered by email to notices@northgate-gp.example and is received on the day of transmission if sent before 5:00 p.m. New York time on a Business Day, and otherwise on the next Business Day."
+      },
+      "8.4(a)": {
+        "page": 3,
+        "heading": "Transfer and Adherence Agreement",
+        "text": "(a) the transferee has executed and delivered a Transfer and Adherence Agreement;"
+      },
+      "8.4(b)": {
+        "page": 3,
+        "heading": "KYC, AML and sanctions",
+        "text": "(b) the transferee has completed the General Partner's investor onboarding procedures, including anti-money laundering and know-your-customer checks and sanctions screening, to the General Partner's satisfaction;"
+      },
+      "8.4(c)": {
+        "page": 3,
+        "heading": "Tax form",
+        "text": "(c) the transferee has delivered a properly completed IRS Form W-9 or applicable Form W-8;"
+      },
+      "8.4(d)": {
+        "page": 3,
+        "heading": "Beneficial Owner Limit",
+        "text": "(d) the Transfer would not cause the Partnership to exceed the Beneficial Owner Limit;"
+      },
+      "8.4(e)": {
+        "page": 3,
+        "heading": "Portfolio Company Documents",
+        "text": "(e) the Transfer complies with the Portfolio Company Documents, to the extent they apply to it; and"
+      },
+      "8.4(f)": {
+        "page": 3,
+        "heading": "Accredited investor",
+        "text": "(f) the transferee is an \"accredited investor\" as defined in Rule 501(a) of Regulation D."
       }
     }
   },

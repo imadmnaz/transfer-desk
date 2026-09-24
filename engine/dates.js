@@ -128,7 +128,7 @@ function businessDaysWorking(fromDate, n, result, label) {
   return `${n} Business Day${n === 1 ? '' : 's'} ${label} on ${formatReadable(fromDate)}${skipped}`;
 }
 
-module.exports = {
+const DatesModule = {
   isBusinessDay,
   isWeekend,
   isHoliday,
@@ -140,3 +140,14 @@ module.exports = {
   formatReadable,
   businessDaysWorking,
 };
+
+// Browser wrapper: plumbing only, the functions above are untouched. Node
+// (the test runner) gets module.exports as before; a plain <script> tag in
+// the browser gets the same object on window, so app.js and engine.test.js
+// call the exact same functions.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = DatesModule;
+}
+if (typeof window !== 'undefined') {
+  window.TransferDeskDates = DatesModule;
+}
