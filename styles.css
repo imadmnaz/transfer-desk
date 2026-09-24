@@ -162,6 +162,16 @@ a {
   font-size: 14px;
 }
 
+.tour-toggle {
+  border: 0;
+  padding: 0;
+  min-height: 44px;
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 13px;
+}
+
 .tag {
   font-size: 13px;
   color: var(--muted);
@@ -204,6 +214,56 @@ a {
 .register .as-of {
   color: var(--muted);
   font-size: 13px;
+}
+
+/* guided tour */
+
+.tour-banner {
+  margin-top: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.tour-banner[hidden] {
+  display: none;
+}
+
+.tour-step-count {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tour-result {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tour-unsafe {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.tour-checked {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tour-prompt {
+  margin: 0 0 12px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.tour-progress {
+  margin: -4px 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* finding */

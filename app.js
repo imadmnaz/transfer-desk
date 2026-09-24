@@ -15,6 +15,7 @@ const state = {
   extraOverrides: {},
   expandedRuleIds: new Set(),
   expandedNAGates: new Set(),
+  tour: { active: false, step: 1, running: false, progress: 0, sweepResult: null },
 };
 
 const STATE_LABELS = {
@@ -711,6 +712,7 @@ function renderResetFacts() {
 function render() {
   renderHeader();
   renderResetFacts();
+  renderTourBanner();
   let facts;
   let decision;
   try {
@@ -835,6 +837,153 @@ function toggleTheme() {
     /* ignore */
   }
   updateThemeButton();
+}
+
+// --- Guided tour ----------------------------------------------------------
+//
+// A short, inline, one-tap-per-step walk through the demo's core point,
+// built entirely out of real engine runs (scenario loads, fact overrides and
+// the full 486,000-case sweep already used by the footer's "Run all tests").
+// Nothing here is scripted text standing in for a result; every number and
+// verdict shown is produced by evaluate() or runSweepWithProgress() at the
+// moment the step runs.
+
+const TOUR_STEP_TEXT = {
+  1: {
+    prompt:
+      "This sale is clean under the SPV's own documents, and still blocked. Helion's stockholders' agreement bars Competitors, whatever the consents.",
+    button: 'Next',
+  },
+  2: {
+    prompt: 'Suppose the buyer is not a Competitor.',
+    button: 'Change it',
+  },
+  3: {
+    prompt: "Now suppose Helion's consent was only agreed on a call.",
+    button: 'Change it',
+  },
+  4: {
+    result: 'It will not clear what it cannot evidence.',
+    prompt: 'Test every combination of facts.',
+    button: 'Run it',
+  },
+  end: {
+    prompt: 'Explore any of the 31 scenarios, or change any fact.',
+    button: 'Done',
+  },
+};
+
+function tourCompleted() {
+  try {
+    return localStorage.getItem('tourCompleted') === 'yes';
+  } catch (e) {
+    return false;
+  }
+}
+
+function markTourCompleted() {
+  try {
+    localStorage.setItem('tourCompleted', 'yes');
+  } catch (e) {
+    /* private mode / blocked storage: the tour just offers to replay next time */
+  }
+}
+
+function startTour() {
+  state.scenarioId = 'T09';
+  state.extraOverrides = {};
+  state.expandedRuleIds = new Set();
+  state.expandedNAGates = new Set();
+  state.tour = { active: true, step: 1, running: false, progress: 0, sweepResult: null };
+  render();
+}
+
+function closeTour() {
+  state.tour = { active: false, step: 1, running: false, progress: 0, sweepResult: null };
+  markTourCompleted();
+  render();
+}
+
+async function handleTourAction() {
+  const step = state.tour.step;
+  if (step === 1) {
+    state.tour.step = 2;
+    render();
+  } else if (step === 2) {
+    state.tour.step = 3;
+    applyOverride({ transfer: { transferee_is_competitor: 'no' } });
+  } else if (step === 3) {
+    state.tour.step = 4;
+    applyOverride({ company: { consent: { status: 'unknown' } } });
+  } else if (step === 4) {
+    state.tour.running = true;
+    state.tour.progress = 0;
+    render();
+    const result = await runSweepWithProgress((checked) => {
+      state.tour.progress = checked;
+      renderTourBanner();
+    });
+    state.tour.running = false;
+    state.tour.sweepResult = result;
+    state.tour.step = 'end';
+    render();
+  } else if (step === 'end') {
+    closeTour();
+  }
+}
+
+function updateTourToggle() {
+  document.getElementById('tour-toggle').textContent = state.tour.active ? 'Skip tour' : 'Replay tour';
+}
+
+const TOUR_STEP_COUNT = 4;
+
+function renderTourBanner() {
+  const banner = document.getElementById('tour-banner');
+  updateTourToggle();
+
+  if (!state.tour.active) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    return;
+  }
+  banner.hidden = false;
+  banner.innerHTML = '';
+
+  const info = TOUR_STEP_TEXT[state.tour.step];
+
+  if (typeof state.tour.step === 'number') {
+    banner.appendChild(el('p', 'tour-step-count', `Step ${state.tour.step} of ${TOUR_STEP_COUNT}`));
+  }
+
+  if (state.tour.step === 4 && state.tour.running) {
+    banner.appendChild(el('p', 'tour-result', info.result));
+    banner.appendChild(el('p', 'tour-prompt', info.prompt));
+    banner.appendChild(el('p', 'tour-progress', `Checked ${state.tour.progress.toLocaleString('en-US')} of 486,000 combinations…`));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tour-action';
+    btn.textContent = 'Running…';
+    btn.disabled = true;
+    banner.appendChild(btn);
+    return;
+  }
+
+  if (info.result) banner.appendChild(el('p', 'tour-result', info.result));
+  if (state.tour.step === 'end' && state.tour.sweepResult) {
+    const r = state.tour.sweepResult;
+    const unsafe = r.mustBlockFailures + r.uncertainClearFailures;
+    banner.appendChild(el('p', 'tour-unsafe', `${unsafe} unsafe clears`));
+    banner.appendChild(el('p', 'tour-checked', `${r.checked.toLocaleString('en-US')} combinations checked`));
+  }
+  banner.appendChild(el('p', 'tour-prompt', info.prompt));
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tour-action';
+  btn.textContent = info.button;
+  btn.addEventListener('click', handleTourAction);
+  banner.appendChild(btn);
 }
 
 // --- Test runner (mirrors tests/engine.test.js and tests/sweep.test.js) ---
@@ -1005,11 +1154,10 @@ const SWEEP_VERSION = [
   { key: 'no', overrides: { documents_version_confirmed: 'no' } },
 ];
 
-function runSweep() {
-  let checked = 0;
-  let mustBlockFailures = 0;
-  let uncertainClearFailures = 0;
-
+// Lazily yields every combination in the cartesian product, so both the
+// synchronous sweep (footer scorecard) and the chunked, progress-reporting
+// sweep (guided tour) walk the exact same 486,000 cases from one place.
+function* generateSweepCases() {
   for (const relationship of SWEEP_RELATIONSHIP) {
     for (const competitor of SWEEP_COMPETITOR) {
       for (const gpConsent of SWEEP_GP_CONSENT) {
@@ -1020,42 +1168,7 @@ function runSweep() {
                 for (const kyc of SWEEP_KYC) {
                   for (const boLimit of SWEEP_BO_LIMIT) {
                     for (const version of SWEEP_VERSION) {
-                      let facts = DATA.baseFacts;
-                      facts = Engine.deepMergeFacts(facts, relationship.overrides);
-                      facts = Engine.deepMergeFacts(facts, competitor.overrides);
-                      facts = Engine.deepMergeFacts(facts, gpConsent.overrides);
-                      facts = Engine.deepMergeFacts(facts, companyConsent.overrides);
-                      facts = Engine.deepMergeFacts(facts, rofrNotice.overrides);
-                      facts = Engine.deepMergeFacts(facts, rofrResponse.overrides);
-                      facts = Engine.deepMergeFacts(facts, sanctions.overrides);
-                      facts = Engine.deepMergeFacts(facts, kyc.overrides);
-                      facts = Engine.deepMergeFacts(facts, boLimit.overrides);
-                      facts = Engine.deepMergeFacts(facts, version.overrides);
-
-                      const decision = Engine.evaluate(facts, DATA.rulebook, DATA.calendar);
-                      checked++;
-
-                      const relIsAffiliate = relationship.key === 'affiliate';
-
-                      const mustBlock =
-                        competitor.key === 'yes' ||
-                        sanctions.key === 'hit' ||
-                        (!relIsAffiliate && companyConsent.key === 'refused') ||
-                        (!relIsAffiliate && rofrResponse.key === 'exercised_whole') ||
-                        (relationship.key === 'unrelated' && gpConsent.key === 'refused');
-                      if (mustBlock && decision.verdict !== 'BLOCKED') mustBlockFailures++;
-
-                      const uncertain =
-                        competitor.key === 'unknown' ||
-                        (!relIsAffiliate && ['unknown', 'contradictory'].includes(gpConsent.key)) ||
-                        (!relIsAffiliate && ['unknown', 'contradictory'].includes(companyConsent.key)) ||
-                        (!relIsAffiliate && ['sent_no_proof', 'delivered_complete_unknown'].includes(rofrNotice.key)) ||
-                        (!relIsAffiliate && ['unknown', 'exercised_partial'].includes(rofrResponse.key)) ||
-                        sanctions.key === 'unknown' ||
-                        kyc.key === 'unknown' ||
-                        boLimit.key === 'null' ||
-                        version.key === 'no';
-                      if (uncertain && decision.verdict === 'CHECKLIST_READY') uncertainClearFailures++;
+                      yield { relationship, competitor, gpConsent, companyConsent, rofrNotice, rofrResponse, sanctions, kyc, boLimit, version };
                     }
                   }
                 }
@@ -1066,7 +1179,84 @@ function runSweep() {
       }
     }
   }
+}
 
+function evaluateSweepCase(c) {
+  let facts = DATA.baseFacts;
+  facts = Engine.deepMergeFacts(facts, c.relationship.overrides);
+  facts = Engine.deepMergeFacts(facts, c.competitor.overrides);
+  facts = Engine.deepMergeFacts(facts, c.gpConsent.overrides);
+  facts = Engine.deepMergeFacts(facts, c.companyConsent.overrides);
+  facts = Engine.deepMergeFacts(facts, c.rofrNotice.overrides);
+  facts = Engine.deepMergeFacts(facts, c.rofrResponse.overrides);
+  facts = Engine.deepMergeFacts(facts, c.sanctions.overrides);
+  facts = Engine.deepMergeFacts(facts, c.kyc.overrides);
+  facts = Engine.deepMergeFacts(facts, c.boLimit.overrides);
+  facts = Engine.deepMergeFacts(facts, c.version.overrides);
+
+  const decision = Engine.evaluate(facts, DATA.rulebook, DATA.calendar);
+  const relIsAffiliate = c.relationship.key === 'affiliate';
+
+  const mustBlock =
+    c.competitor.key === 'yes' ||
+    c.sanctions.key === 'hit' ||
+    (!relIsAffiliate && c.companyConsent.key === 'refused') ||
+    (!relIsAffiliate && c.rofrResponse.key === 'exercised_whole') ||
+    (c.relationship.key === 'unrelated' && c.gpConsent.key === 'refused');
+
+  const uncertain =
+    c.competitor.key === 'unknown' ||
+    (!relIsAffiliate && ['unknown', 'contradictory'].includes(c.gpConsent.key)) ||
+    (!relIsAffiliate && ['unknown', 'contradictory'].includes(c.companyConsent.key)) ||
+    (!relIsAffiliate && ['sent_no_proof', 'delivered_complete_unknown'].includes(c.rofrNotice.key)) ||
+    (!relIsAffiliate && ['unknown', 'exercised_partial'].includes(c.rofrResponse.key)) ||
+    c.sanctions.key === 'unknown' ||
+    c.kyc.key === 'unknown' ||
+    c.boLimit.key === 'null' ||
+    c.version.key === 'no';
+
+  return { decision, mustBlock, uncertain };
+}
+
+function runSweep() {
+  let checked = 0;
+  let mustBlockFailures = 0;
+  let uncertainClearFailures = 0;
+
+  for (const c of generateSweepCases()) {
+    const { decision, mustBlock, uncertain } = evaluateSweepCase(c);
+    checked++;
+    if (mustBlock && decision.verdict !== 'BLOCKED') mustBlockFailures++;
+    if (uncertain && decision.verdict === 'CHECKLIST_READY') uncertainClearFailures++;
+  }
+
+  return { checked, mustBlockFailures, uncertainClearFailures };
+}
+
+// Same sweep, yielding to the event loop every CHUNK cases so onProgress can
+// paint a live counter. Used only by the guided tour; the footer's "Run all
+// tests" keeps using the synchronous runSweep() above.
+async function runSweepWithProgress(onProgress) {
+  const CHUNK = 4000;
+  let checked = 0;
+  let mustBlockFailures = 0;
+  let uncertainClearFailures = 0;
+  let sinceYield = 0;
+
+  for (const c of generateSweepCases()) {
+    const { decision, mustBlock, uncertain } = evaluateSweepCase(c);
+    checked++;
+    if (mustBlock && decision.verdict !== 'BLOCKED') mustBlockFailures++;
+    if (uncertain && decision.verdict === 'CHECKLIST_READY') uncertainClearFailures++;
+    sinceYield++;
+    if (sinceYield >= CHUNK) {
+      sinceYield = 0;
+      onProgress(checked);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  onProgress(checked);
   return { checked, mustBlockFailures, uncertainClearFailures };
 }
 
@@ -1140,6 +1330,11 @@ function wireEvents() {
     render();
   });
 
+  document.getElementById('tour-toggle').addEventListener('click', () => {
+    if (state.tour.active) closeTour();
+    else startTour();
+  });
+
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
 
   document.getElementById('audit-toggle').addEventListener('click', () => {
@@ -1169,6 +1364,7 @@ async function init() {
   initStickyBar();
   await loadData();
   render();
+  if (!tourCompleted()) startTour();
 }
 
 init();
