@@ -273,9 +273,20 @@ The single most important assertion across the whole suite: **no case with any U
 
 Calm, exact and quiet, like Stripe's documentation or Linear. Typography and whitespace do the work. No gradients, no illustrations, no emoji, no drop shadows beyond a hairline.
 
+**The visual target is `design-ref/reference.html`** (with screenshots beside it), a static render of T09 called "the transfer register". Match its fonts, colours, type sizes, spacing and rules closely. Where it differs from anything below in this section (tokens, fonts, verdict banner, scenario chips, gate stepper, stepper cards), the reference wins. The verdict wording rules in item 4 still apply, adapted to its format. Its content is illustrative only: all real text, dates, counts and scores come from the engine and the data files. `design-ref/` is gitignored and never deployed.
+
+Design rules that go with the reference:
+- IBM Plex Sans for everything, including the wordmark (16px semibold) and the finding (22/28 semibold). Body 16/24. Section labels 13/18 medium. IBM Plex Mono 12px for citations only. No serif anywhere.
+- Each theme has one canvas, one text colour, one rule colour and one link colour; muted text is the text colour mixed toward the canvas. Red is reserved for the word BLOCKED. Escalate uses the text colour with the label LAWYER REVIEW. No green, no tinted panels, no cards, no boxes, no rounded corners, no highlighting.
+- Order: header (wordmark; scenario as "T09 · Competitor buyer" with a "Change" link that opens a full-screen searchable scenario list), a four-row register (Seller, Buyer, Interest, Completion), the finding, then the document review.
+- The finding: a 12px status label (BLOCKED, LAWYER REVIEW, or N ACTIONS OUTSTANDING / READY FOR THE GP TO RECORD), one sentence at 22/28, one short explanation, and the citations it relies on. Blocked leads with what failed. Lawyer review says what is uncertain and what the lawyer must decide. Actions outstanding leads with the next action, its owner and due date.
+- The document review follows the decision: the deciding rule first and expanded, with its clause as source text (a source line such as "Company stockholders' agreement · §3.3 · p. 3", a single top rule, the verbatim extract, and a link to open the PDF at that page), then the fact toggle that would change it. Other rules follow as plain rows with a one-line detail and a state word, grouped by document, the deciding document first.
+- Desktop stays one reading column, max 680px. The full document opens only on request.
+- The test scorecard, audit id and theme toggle sit in a quiet record and footer at the very end.
+
 ### Tokens
 
-- Fonts: Inter for UI (Google Fonts), JetBrains Mono for citations and dates. Tabular figures for all numbers.
+- Fonts (Google Fonts): IBM Plex Sans and IBM Plex Mono only, as set out above. Tabular figures for all numbers.
 - Light: background `#FAFAF7`, surface `#FFFFFF`, ink `#1A1A1A`, muted `#6B6B66`, hairline `#E7E5DF`, accent navy `#14284B`.
 - Dark: background `#0F1115`, surface `#171A20`, ink `#ECECEC`, muted `#9A9A95`, hairline `#2A2E36`, accent `#8FA8D6`. Follow `prefers-color-scheme` and provide a manual toggle.
 - Verdicts: Blocked muted red `#9B2C2C` on `#F7ECEA`; Escalate amber `#8A5A00` on `#FBF3E2`; Checklist ready is ink on surface with a navy left rule.
@@ -331,7 +342,7 @@ Cards inside cards. More than one border style. Icons beside every heading. Emoj
 
 ### Design process for phase 4
 
-1. Build a static version first from the computed T09 decision, before any interactivity. Stop and show screenshots.
+1. Build a static version first from the computed T09 decision, before any interactivity, matching `design-ref/reference.html`. Stop and show screenshots side by side with the reference ones.
 2. Take screenshots with Playwright run through npx, without adding it to the repo (the repo stays dependency free). Capture 375×812 and 1280×800, light and dark, for T09, T10, T13 and T01, plus one with a clause expanded and one with the scorecard open. Save them to `screens/` (gitignored) with names like `t09-375-light.png`.
 3. Before showing me anything, review your own screenshots against this section and fix what you find. At least two rounds.
 4. Confirm no horizontal scroll at 320, 375 and 390px, and check every text and background pair against WCAG AA in both themes. Report the results.

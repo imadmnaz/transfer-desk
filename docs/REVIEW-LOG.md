@@ -37,3 +37,12 @@ Every review of this project is recorded here: what was found, what I decided, a
 | 2 | "At least five (or ten) Business Days before the Transfer takes effect" was read as clear days, excluding both the day of receipt and the effective day, giving an earliest completion one Business Day later than expected (T07, and T08's cure date of 14 October rather than 13 October). | Accepted | This is a genuine ambiguity in the drafting, and courts have read similar wording both ways. LPA 8.2 and SA 3.2 now say "clear Business Days" and spell out the exclusions. The engine uses the (N+1)th Business Day after receipt, and T08's expected cure date is now 14 October 2026. |
 | 3 | T13: SA 4.3 prohibits a partial exercise of the right of first refusal but does not say what a purported partial exercise does. | Agreed | Already ESCALATE by design: the effect of an invalid partial exercise needs a lawyer. |
 | 4 | T17: the documents do not say whether a consent can be withdrawn, so an approval followed by a refusal cannot be resolved mechanically. | Agreed | Already ESCALATE by design. |
+
+## Round 3: engine review
+
+**Reviewer:** my review of `engine/engine.js` against the unsafe-clears principle, after phase 2 (all 31 scenarios passing).
+**Scope:** the C-ROFR-NOTICE, C-ROFR-RESPONSE and C-ROFR-WINDOW logic.
+
+| # | Finding | Decision | Change made |
+|---|---|---|---|
+| 1 | Found in engine review: a recorded exercise of the right of first refusal was ignored when the Transfer Notice was not evidenced, producing an unsafe clear. Fixed, with four regression tests. | Accepted | C-ROFR-RESPONSE now evaluates `exercised_whole`, `exercised_partial`, `unknown` and `waived` on their own terms whenever the right of first refusal applies at all (not only once the Transfer Notice is SATISFIED); only `none` still depends on the notice. A `delivered` notice with `complete: "no"` is now C-ROFR-NOTICE OUTSTANDING, not UNKNOWN, since it is a known gap with a clear cure. C-ROFR-WINDOW now applies whenever there is a waiver, using the waiver date, or the earlier of the waiver and the expiry where the expiry is known, even without a satisfied notice. None of the 31 scenarios changed outcome. |
