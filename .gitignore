@@ -8,3 +8,6 @@ design-ref/
 PRODUCT.md
 DESIGN.md
 .impeccable/
+node_modules/
+package-lock.json
+package.json

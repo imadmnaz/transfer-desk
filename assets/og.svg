@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#F7F6F2"/>
+  <g transform="translate(80 80)">
+    <g transform="scale(2)">
+      <rect width="32" height="32" rx="8" fill="#3B35A0"/>
+      <rect x="7" y="9.5" width="12" height="4" rx="2" fill="#FFFFFF" fill-opacity="0.55"/>
+      <rect x="13" y="18.5" width="12" height="4" rx="2" fill="#FFFFFF"/>
+      <rect x="17" y="9.5" width="4" height="13" rx="2" fill="#FFFFFF" fill-opacity="0.85"/>
+    </g>
+    <text x="84" y="44" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="34" font-weight="600" fill="#17161C" letter-spacing="-0.3">Transfer Desk</text>
+  </g>
+  <text x="80" y="268" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="60" font-weight="600" fill="#17161C" letter-spacing="-1.2">SPV secondary transfers,</text>
+  <text x="80" y="340" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="60" font-weight="600" fill="#17161C" letter-spacing="-1.2">cleared clause by clause.</text>
+  <text x="80" y="404" font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="26" fill="#625F6B">Fund agreement, side letter, company and buyer checks. Every answer cites its clause.</text>
+  <g font-family="IBM Plex Sans, Helvetica, Arial, sans-serif" font-size="22" font-weight="600">
+    <rect x="80" y="468" width="138" height="44" rx="22" fill="#B42318" fill-opacity="0.08"/>
+    <circle cx="104" cy="490" r="5" fill="#9F1D13"/>
+    <text x="118" y="498" fill="#9F1D13">Blocked</text>
+    <rect x="234" y="468" width="194" height="44" rx="22" fill="#C47D00" fill-opacity="0.12"/>
+    <circle cx="258" cy="490" r="5" fill="#8A5100"/>
+    <text x="272" y="498" fill="#8A5100">Lawyer review</text>
+    <rect x="444" y="468" width="266" height="44" rx="22" fill="#3B35A0" fill-opacity="0.08"/>
+    <circle cx="468" cy="490" r="5" fill="#3B35A0"/>
+    <text x="482" y="498" fill="#3B35A0">2 actions outstanding</text>
+    <rect x="726" y="468.5" width="324" height="43" rx="21.5" fill="#FFFFFF" stroke="#CFCBC1"/>
+    <circle cx="750" cy="490" r="5" fill="#17161C"/>
+    <text x="764" y="498" fill="#17161C">Ready for the GP to record</text>
+  </g>
+  <text x="80" y="574" font-family="IBM Plex Mono, Menlo, monospace" font-size="18" fill="#625F6B">Synthetic documents. Not legal advice.</text>
+</svg>

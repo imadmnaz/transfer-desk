@@ -50,8 +50,51 @@ const state = {
   requestOverrides: {},
   dealCollapsed: new Set(['deal-fund', 'deal-harbour', 'deal-company', 'deal-buyer', 'deal-asof']),
   lastAnswerKey: null,
+  lastAnswerId: null,
   docViewer: { open: false, doc: null },
+  queueTab: 'all',
+  queueQuery: '',
+  // Session activity per request id: each entry is one fact change the
+  // operator made, with the answer before and after. UI memory only; the
+  // engine never reads it.
+  activity: {},
+  undo: null,
 };
+
+// The four display statuses. They are read from the engine's verdict and
+// outstanding count, never decided here. Red is reserved for Blocked; there
+// is no green, because ready to record is not an approval.
+const STATUS_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'blocked', label: 'Blocked' },
+  { key: 'lawyer', label: 'Lawyer' },
+  { key: 'actions', label: 'Action needed' },
+  { key: 'ready', label: 'Ready' },
+];
+
+function statusOf(decision) {
+  if (decision.verdict === 'BLOCKED') {
+    return { key: 'blocked', group: 0, short: 'Blocked', long: 'Blocked', badge: 'badge-blocked' };
+  }
+  if (decision.verdict === 'ESCALATE') {
+    return { key: 'lawyer', group: 1, short: 'Lawyer review', long: 'Lawyer review', badge: 'badge-lawyer' };
+  }
+  const n = decision.results.filter((r) => r.state === 'OUTSTANDING').length;
+  if (n > 0) {
+    return {
+      key: 'actions',
+      group: 2,
+      short: `${n} action${n === 1 ? '' : 's'}`,
+      long: `${n} action${n === 1 ? '' : 's'} outstanding`,
+      badge: 'badge-action',
+    };
+  }
+  return { key: 'ready', group: 3, short: 'Ready to record', long: 'Ready for the GP to record', badge: 'badge-ready' };
+}
+
+function badge(status, extraClass) {
+  return el('span', `badge ${status.badge}${extraClass ? ` ${extraClass}` : ''}`, status.short);
+}
 
 const DOC_LIST = [
   { key: 'LPA', label: 'LPA' },
@@ -87,7 +130,26 @@ async function loadData() {
 function parseHash() {
   const m = location.hash.match(/^#\/request\/(.+)$/);
   if (m) return { view: 'request', id: decodeURIComponent(m[1]) };
+  if (location.hash === '#/new') return { view: 'new', id: 'NEW' };
+  if (location.hash === '#/deadlines') return { view: 'deadlines' };
   return { view: 'queue' };
+}
+
+// Fresh intake defaults for the "New request" wizard: nothing has been
+// evidenced yet, unlike the clean baseline used by the 31 scenarios. The
+// parties and terms start at the baseline (Aldwych Angels Ltd -> Mira Chen)
+// and step 1 of the wizard is where an operator changes them.
+const NEW_INTAKE_OVERRIDES = {
+  fund: { gp_consent: { status: 'not_requested' } },
+  company: { consent: { status: 'not_requested' }, rofr_notice: { status: 'not_sent' } },
+  buyer: { kyc: 'not_started', sanctions: 'pending', accredited: 'unknown', tax_form: 'outstanding', adherence: 'outstanding' },
+};
+
+function startNewRequestWizard() {
+  state.wizard = { step: 1 };
+  state.requestOverrides.NEW = JSON.parse(JSON.stringify(NEW_INTAKE_OVERRIDES));
+  state.activity.NEW = [];
+  navigate('#/new');
 }
 
 function navigate(hash) {
@@ -221,29 +283,7 @@ function daysAwayText(fromISO, toISO) {
 
 function queueRowFor(id) {
   const { facts, decision } = decisionForId(id);
-
-  let statusWord;
-  let statusClass = '';
-  let group;
-
-  if (decision.verdict === 'BLOCKED') {
-    statusWord = 'BLOCKED';
-    statusClass = 'blocked';
-    group = 0;
-  } else if (decision.verdict === 'ESCALATE') {
-    statusWord = 'LAWYER';
-    statusClass = 'escalate';
-    group = 1;
-  } else {
-    const outstandingCount = decision.results.filter((r) => r.state === 'OUTSTANDING').length;
-    if (outstandingCount > 0) {
-      statusWord = `${outstandingCount} action${outstandingCount === 1 ? '' : 's'}`;
-      group = 2;
-    } else {
-      statusWord = 'READY';
-      group = 3;
-    }
-  }
+  const status = statusOf(decision);
 
   const whatMatters = queueWording(firstSentence(humanize(decision.headline)));
   const dueDate = (nextActionOf(decision) || {}).due || null;
@@ -254,14 +294,51 @@ function queueRowFor(id) {
     ref: meta.ref,
     received: meta.received,
     sellerBuyer: `${facts.transfer.transferor} → ${facts.transfer.transferee}${transferSuffix(facts)}`,
-    statusWord,
-    statusClass,
-    group,
+    status,
+    group: status.group,
     dueDate,
     whatMatters,
     completion: facts.transfer.proposed_completion,
     completionAway: daysAwayText(facts.as_of, facts.transfer.proposed_completion),
   };
+}
+
+function rowMatchesQuery(row, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return `${row.sellerBuyer} ${row.ref} ${row.whatMatters}`.toLowerCase().includes(q);
+}
+
+function renderQueueTabs(counts) {
+  const container = document.getElementById('queue-tabs');
+  container.innerHTML = '';
+  for (const tab of STATUS_TABS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tab';
+    btn.dataset.tab = tab.key;
+    btn.setAttribute('role', 'tab');
+    const selected = state.queueTab === tab.key;
+    btn.setAttribute('aria-selected', String(selected));
+    btn.tabIndex = selected ? 0 : -1;
+    btn.appendChild(el('span', null, tab.label));
+    btn.appendChild(el('span', 'tab-count', String(counts[tab.key])));
+    btn.addEventListener('click', () => {
+      state.queueTab = tab.key;
+      renderQueue();
+      document.querySelector(`#queue-tabs [data-tab="${tab.key}"]`)?.focus();
+    });
+    btn.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      const i = STATUS_TABS.findIndex((t) => t.key === state.queueTab);
+      const next = STATUS_TABS[(i + (e.key === 'ArrowRight' ? 1 : STATUS_TABS.length - 1)) % STATUS_TABS.length];
+      state.queueTab = next.key;
+      renderQueue();
+      document.querySelector(`#queue-tabs [data-tab="${next.key}"]`)?.focus();
+    });
+    container.appendChild(btn);
+  }
 }
 
 function compareRows(a, b) {
@@ -276,24 +353,29 @@ function compareRows(a, b) {
 
 function renderCompletionCell(row) {
   const wrap = el('div');
-  wrap.appendChild(el('div', null, `${shortReadable(row.completion)} · ${row.completionAway}`));
-  if (row.dueDate) wrap.appendChild(el('div', 'queue-due-date', `Due ${shortReadable(row.dueDate)}`));
+  wrap.appendChild(el('div', null, shortReadable(row.completion)));
+  wrap.appendChild(el('div', 'queue-meta', row.completionAway));
+  if (row.dueDate) wrap.appendChild(el('div', 'queue-due-date', `Next due ${shortReadable(row.dueDate)}`));
   return wrap;
 }
 
 function renderQueue() {
-  const rows = QUEUE_ROWS.map((r) => r.id).map(queueRowFor).sort(compareRows);
+  const allRows = QUEUE_ROWS.map((r) => r.id).map(queueRowFor).sort(compareRows);
+  const searched = allRows.filter((r) => rowMatchesQuery(r, state.queueQuery));
 
-  const counts = { blocked: 0, lawyer: 0, actions: 0, ready: 0 };
-  for (const r of rows) {
-    if (r.group === 0) counts.blocked++;
-    else if (r.group === 1) counts.lawyer++;
-    else if (r.group === 2) counts.actions++;
-    else counts.ready++;
-  }
+  const counts = { all: searched.length, blocked: 0, lawyer: 0, actions: 0, ready: 0 };
+  for (const r of searched) counts[r.status.key]++;
+  const totals = { blocked: 0, lawyer: 0, actions: 0, ready: 0 };
+  for (const r of allRows) totals[r.status.key]++;
 
   document.getElementById('queue-summary').textContent =
-    `${rows.length} requests: ${counts.blocked} blocked · ${counts.lawyer} need a lawyer · ${counts.actions} actions outstanding · ${counts.ready} ready to record`;
+    `${allRows.length} open requests · ${totals.blocked} blocked · ${totals.lawyer} with a lawyer · ${totals.actions} with actions outstanding · ${totals.ready} ready to record`;
+
+  renderQueueTabs(counts);
+
+  const rows = state.queueTab === 'all' ? searched : searched.filter((r) => r.status.key === state.queueTab);
+  document.getElementById('queue-empty').hidden = rows.length > 0;
+  document.getElementById('queue-table').hidden = rows.length === 0;
 
   const tbody = document.getElementById('queue-table-body');
   tbody.innerHTML = '';
@@ -304,13 +386,19 @@ function renderQueue() {
     const tr = document.createElement('tr');
     tr.tabIndex = 0;
     tr.className = 'queue-row';
+    tr.dataset.id = row.id;
 
     const requestCell = el('td');
-    requestCell.appendChild(el('div', null, row.sellerBuyer));
-    requestCell.appendChild(el('div', 'queue-meta', `${row.ref} · received ${shortReadable(row.received)}`));
+    requestCell.appendChild(el('div', 'queue-parties', row.sellerBuyer));
+    const metaLine = el('div', 'queue-meta');
+    metaLine.appendChild(el('span', 'queue-ref', row.ref));
+    metaLine.appendChild(document.createTextNode(` · received ${shortReadable(row.received)}`));
+    requestCell.appendChild(metaLine);
     tr.appendChild(requestCell);
 
-    tr.appendChild(el('td', 'queue-status' + (row.statusClass ? ` ${row.statusClass}` : ''), row.statusWord));
+    const statusCell = el('td', 'queue-status');
+    statusCell.appendChild(badge(row.status));
+    tr.appendChild(statusCell);
     tr.appendChild(el('td', 'queue-matters', row.whatMatters));
     const completionCell = document.createElement('td');
     completionCell.className = 'queue-completion';
@@ -331,17 +419,195 @@ function renderQueue() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'queue-row-mobile';
+    btn.dataset.id = row.id;
     btn.appendChild(el('span', 'queue-row-mobile-top', row.sellerBuyer));
-    btn.appendChild(el('span', 'queue-row-mobile-meta', `${row.ref} · received ${shortReadable(row.received)}`));
-    const statusLine = el('span', 'queue-row-mobile-status' + (row.statusClass ? ` ${row.statusClass}` : ''), row.statusWord);
-    btn.appendChild(statusLine);
+    btn.appendChild(badge(row.status, 'queue-row-mobile-status'));
     btn.appendChild(el('span', 'queue-row-mobile-matters', row.whatMatters));
-    btn.appendChild(el('span', 'queue-row-mobile-due', `${shortReadable(row.completion)} · ${row.completionAway}`));
-    if (row.dueDate) btn.appendChild(el('span', 'queue-row-mobile-due', `Due ${shortReadable(row.dueDate)}`));
+    const meta = el('span', 'queue-row-mobile-meta');
+    meta.appendChild(el('span', 'queue-ref', row.ref));
+    meta.appendChild(el('span', null, `Completes ${shortReadable(row.completion)}, ${row.completionAway}`));
+    if (row.dueDate) meta.appendChild(el('span', 'due', `Next due ${shortReadable(row.dueDate)}`));
+    btn.appendChild(meta);
     btn.addEventListener('click', open);
     li.appendChild(btn);
     mobileList.appendChild(li);
   }
+}
+
+// --- Deadlines ----------------------------------------------------------
+//
+// The same rows as the queue, filtered to the ones with a next due date and
+// sorted soonest first. Nothing here is a new fact or a new rule: due dates
+// come straight from each request's checklist, exactly as the queue reads
+// them for its "Next due" column.
+
+function renderDeadlines() {
+  const rows = QUEUE_ROWS.map((r) => r.id)
+    .map(queueRowFor)
+    .filter((r) => r.dueDate)
+    .sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0));
+
+  document.getElementById('deadlines-summary').textContent =
+    rows.length === 0 ? 'No request has a step waiting on a date right now.' : `${rows.length} request${rows.length === 1 ? '' : 's'} with a next due date, soonest first.`;
+
+  document.getElementById('deadlines-table').hidden = rows.length === 0;
+  document.getElementById('deadlines-empty').hidden = rows.length > 0;
+
+  const tbody = document.getElementById('deadlines-table-body');
+  tbody.innerHTML = '';
+  const mobileList = document.getElementById('deadlines-list-mobile');
+  mobileList.innerHTML = '';
+
+  for (const row of rows) {
+    const tr = document.createElement('tr');
+    tr.tabIndex = 0;
+    tr.className = 'queue-row';
+    tr.dataset.id = row.id;
+
+    const requestCell = el('td');
+    requestCell.appendChild(el('div', 'queue-parties', row.sellerBuyer));
+    const metaLine = el('div', 'queue-meta');
+    metaLine.appendChild(el('span', 'queue-ref', row.ref));
+    requestCell.appendChild(metaLine);
+    tr.appendChild(requestCell);
+
+    const statusCell = el('td', 'queue-status');
+    statusCell.appendChild(badge(row.status));
+    tr.appendChild(statusCell);
+
+    const dueCell = el('td', 'queue-completion');
+    dueCell.appendChild(el('div', null, shortReadable(row.dueDate)));
+    dueCell.appendChild(el('div', 'queue-meta', daysAwayText(DATA.baseFacts.as_of, row.dueDate)));
+    tr.appendChild(dueCell);
+
+    const open = () => navigate(`#/request/${row.id}`);
+    tr.addEventListener('click', open);
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    tbody.appendChild(tr);
+
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'queue-row-mobile';
+    btn.dataset.id = row.id;
+    btn.appendChild(el('span', 'queue-row-mobile-top', row.sellerBuyer));
+    btn.appendChild(badge(row.status, 'queue-row-mobile-status'));
+    const meta = el('span', 'queue-row-mobile-meta');
+    meta.appendChild(el('span', 'due', `Due ${shortReadable(row.dueDate)}`));
+    btn.appendChild(meta);
+    btn.addEventListener('click', open);
+    li.appendChild(btn);
+    mobileList.appendChild(li);
+  }
+}
+
+// --- New request wizard ---------------------------------------------------
+//
+// Three steps, ending on the request page for id "NEW": parties and terms,
+// then the evidence gathered so far, then a review. Every field is the same
+// field object the deal form uses (see buildDealSections/renderField), so a
+// change here goes through the same applyOverride() path as editing an
+// existing request. Nothing legal is decided in this file; the engine reads
+// whatever facts the wizard has built once it lands on the request page.
+
+const WIZARD_STEPS = ['Parties and interest', 'Evidence received so far', 'Review'];
+
+function renderWizardSteps() {
+  const wrap = document.getElementById('wizard-steps');
+  wrap.innerHTML = '';
+  const step = state.wizard.step;
+  WIZARD_STEPS.forEach((label, i) => {
+    const n = i + 1;
+    const item = el('div', `wizard-step${n === step ? ' is-current' : n < step ? ' is-done' : ''}`);
+    item.appendChild(el('span', 'wizard-step-dot', String(n)));
+    item.appendChild(el('span', 'wizard-step-label', label));
+    wrap.appendChild(item);
+  });
+  document.getElementById('wizard-step-label').textContent = `Step ${step} of ${WIZARD_STEPS.length} · ${WIZARD_STEPS[step - 1]}`;
+}
+
+function renderWizardActions(facts) {
+  const wrap = document.getElementById('wizard-actions');
+  wrap.innerHTML = '';
+  const step = state.wizard.step;
+  if (step > 1) {
+    const back = el('button', 'btn btn-secondary', 'Back');
+    back.type = 'button';
+    back.addEventListener('click', () => {
+      state.wizard.step -= 1;
+      renderWizard();
+    });
+    wrap.appendChild(back);
+  }
+  if (step < WIZARD_STEPS.length) {
+    const next = el('button', 'btn btn-primary', 'Continue');
+    next.type = 'button';
+    next.addEventListener('click', () => {
+      state.wizard.step += 1;
+      renderWizard();
+    });
+    wrap.appendChild(next);
+  } else {
+    const create = el('button', 'btn btn-primary', 'Create request');
+    create.type = 'button';
+    create.addEventListener('click', () => {
+      showToast(`Request created: ${facts.transfer.transferor} → ${facts.transfer.transferee}`, false);
+      navigate('#/request/NEW');
+    });
+    wrap.appendChild(create);
+  }
+}
+
+function renderWizard() {
+  if (!state.wizard) {
+    // A direct link or a page reload lands here without going through the
+    // "New request" nav click, which normally seeds the intake defaults
+    // before navigating. Seed them here too, so this view is never the
+    // clean baseline: a new request starts with nothing evidenced.
+    state.wizard = { step: 1 };
+    if (!state.requestOverrides.NEW) state.requestOverrides.NEW = JSON.parse(JSON.stringify(NEW_INTAKE_OVERRIDES));
+  }
+  const facts = factsForId('NEW');
+  const sections = buildDealSections(facts);
+  const byId = new Map(sections.map((s) => [s.id, s]));
+
+  renderWizardSteps();
+
+  const body = document.getElementById('wizard-body');
+  body.innerHTML = '';
+
+  if (state.wizard.step === 1) {
+    const sale = byId.get('deal-sale');
+    for (const field of sale.fields) body.appendChild(renderField(field));
+  } else if (state.wizard.step === 2) {
+    const groups = ['deal-fund', 'deal-harbour', 'deal-company', 'deal-buyer'].map((id) => byId.get(id)).filter(Boolean);
+    for (const group of groups) {
+      if (!group.fields.length) continue;
+      body.appendChild(el('h3', 'wizard-group-title', group.title));
+      for (const field of group.fields) body.appendChild(renderField(field));
+    }
+  } else {
+    body.appendChild(el('h3', 'wizard-group-title', 'The sale'));
+    body.appendChild(el('p', 'wizard-review-line', saleSummary(facts)));
+    body.appendChild(el('h3', 'wizard-group-title', 'The fund'));
+    body.appendChild(el('p', 'wizard-review-line', fundSummary(facts)));
+    if (facts.transfer.transferor === 'Harbour Family Office LLC') {
+      body.appendChild(el('h3', 'wizard-group-title', 'Harbour side letter'));
+      body.appendChild(el('p', 'wizard-review-line', harbourSummary(facts)));
+    }
+    body.appendChild(el('h3', 'wizard-group-title', "Helion's agreement"));
+    body.appendChild(el('p', 'wizard-review-line', companySummary(facts)));
+    body.appendChild(el('h3', 'wizard-group-title', 'Buyer checks'));
+    body.appendChild(el('p', 'wizard-review-line', buyerChecksSummary(facts)));
+    body.appendChild(el('p', 'wizard-review-note', 'This opens the request page, where the answer, the clause behind it and every next action are shown, and any of this can still be changed.'));
+  }
+
+  renderWizardActions(facts);
 }
 
 // --- Deal field definitions -------------------------------------------
@@ -352,10 +618,183 @@ function renderQueue() {
 // the current deal stays visible but disabled, with a one-line reason, per
 // CLAUDE.md's "fail safe, never hide the question" spirit.
 
-function applyOverride(overrideObj) {
+// Every fact change, whether from the deal form or a "Log" button on a next
+// action, goes through here: merge the change into this request's session
+// overrides, then re-render, which re-runs Engine.evaluate(). The activity
+// entry records the answer before and after, both read from the engine.
+function applyOverride(overrideObj, logText) {
   const id = state.route.id;
-  state.requestOverrides[id] = Engine.deepMergeFacts(state.requestOverrides[id] || {}, overrideObj);
+  const before = statusOf(decisionForId(id).decision);
+  const previous = state.requestOverrides[id];
+  state.requestOverrides[id] = Engine.deepMergeFacts(previous || {}, overrideObj);
+  const after = statusOf(decisionForId(id).decision);
+  if (logText) {
+    const entry = {
+      text: logText,
+      meta: before.long === after.long ? `Answer unchanged: ${lowerFirst(after.long)}` : `Answer moved from ${lowerFirst(before.long)} to ${lowerFirst(after.long)}`,
+    };
+    (state.activity[id] = state.activity[id] || []).unshift(entry);
+    state.undo = { id, previous, entry };
+  }
   render();
+  return { before, after };
+}
+
+function undoLast() {
+  const u = state.undo;
+  if (!u) return;
+  state.undo = null;
+  if (u.previous) state.requestOverrides[u.id] = u.previous;
+  else delete state.requestOverrides[u.id];
+  const list = state.activity[u.id] || [];
+  const i = list.indexOf(u.entry);
+  if (i >= 0) list.splice(i, 1);
+  hideToast();
+  render();
+}
+
+// --- Toast --------------------------------------------------------------
+
+let toastTimer = null;
+
+function showToast(text, withUndo) {
+  const toast = document.getElementById('toast');
+  document.getElementById('toast-text').textContent = text;
+  document.getElementById('toast-undo').hidden = !withUndo;
+  toast.hidden = false;
+  toast.classList.add('is-entering');
+  requestAnimationFrame(() => toast.classList.remove('is-entering'));
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 6000);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  document.getElementById('toast').hidden = true;
+}
+
+// --- Next actions that can be logged in one tap --------------------------
+//
+// Maps an outstanding checklist item to the fact change that evidences it,
+// dated to the request's as_of (never the real clock). This is exactly the
+// change the deal form would make for the same fact; the engine then decides
+// what it means, which can include a new failure (for example, a notice
+// logged today may leave too few clear days before completion).
+
+function loggableAction(ruleId, facts) {
+  const at = `${facts.as_of}T10:00`;
+  const day = Dates.formatReadable(facts.as_of);
+  const gp = facts.fund.gp_consent || {};
+  const co = facts.company.consent || {};
+  switch (ruleId) {
+    case 'F-CONSENT':
+    case 'S-DEEMED-CONSENT':
+      if (gp.status === 'not_requested') {
+        return { label: 'Log request sent', override: { fund: { gp_consent: { ...gp, status: 'requested', requested_at: at, complete: 'yes' } } }, log: `Request for the GP's consent logged as sent on ${day}` };
+      }
+      if (gp.status === 'requested' && gp.complete === 'no') {
+        return { label: 'Log complete request sent', override: { fund: { gp_consent: { ...gp, complete: 'yes', requested_at: at } } }, log: `Complete request for the GP's consent logged as sent on ${day}` };
+      }
+      if (gp.status === 'requested') {
+        return { label: 'Log written consent', override: { fund: { gp_consent: { ...gp, status: 'received', received_at: at } } }, log: `The GP's written consent logged as received on ${day}` };
+      }
+      return null;
+    case 'C-CONSENT':
+      if (co.status === 'not_requested') {
+        return { label: 'Log request sent', override: { company: { consent: { ...co, status: 'requested', requested_at: at } } }, log: `Request for Helion's consent logged as sent on ${day}` };
+      }
+      if (co.status === 'requested') {
+        return { label: 'Log written consent', override: { company: { consent: { ...co, status: 'received', received_at: at } } }, log: `Helion's written consent logged as received on ${day}` };
+      }
+      return null;
+    case 'F-PERMITTED-NOTICE':
+      return { label: 'Log notice delivered', override: { fund: { gp_permitted_notice: { status: 'delivered', sent_at: at, complete: 'yes' } } }, log: `Notice of the transfer to the GP logged as delivered on ${day}` };
+    case 'C-PERMITTED-NOTICE':
+      return { label: 'Log notice delivered', override: { company: { permitted_notice: { status: 'delivered', sent_at: at, complete: 'yes' } } }, log: `Notice of the transfer to Helion logged as delivered on ${day}` };
+    case 'C-ROFR-NOTICE':
+      return {
+        label: 'Log Transfer Notice delivered',
+        override: { company: { rofr_notice: { status: 'delivered', sent_at: at, complete: 'yes', proof_of_delivery: 'yes' } } },
+        log: `Complete Transfer Notice logged as delivered to Helion on ${day}`,
+      };
+    case 'C-ROFR-RESPONSE':
+      if ((facts.company.rofr_response || {}).status !== 'none') return null;
+      return { label: 'Log written waiver', override: { company: { rofr_response: { status: 'waived', at: facts.as_of } } }, log: `Helion's written waiver of its right of first refusal logged on ${day}` };
+    case 'B-KYC':
+      return { label: 'Log KYC cleared', override: { buyer: { kyc: 'cleared' } }, log: 'KYC and AML checks logged as cleared' };
+    case 'B-SANCTIONS':
+      return { label: 'Log screening clear', override: { buyer: { sanctions: 'clear' } }, log: 'Sanctions screening logged as clear' };
+    case 'B-TAX-FORM':
+      return { label: 'Log tax form received', override: { buyer: { tax_form: 'received' } }, log: 'Tax form logged as received' };
+    case 'B-ADHERENCE':
+      return { label: 'Log signed agreement', override: { buyer: { adherence: 'signed' } }, log: 'Signed Transfer and Adherence Agreement logged as received' };
+    default:
+      return null;
+  }
+}
+
+function runLoggedAction(action) {
+  const { after } = applyOverride(action.override, action.log);
+  showToast(`${action.log}. Now: ${lowerFirst(after.long)}.`, true);
+}
+
+// --- Deterministic drafts -------------------------------------------------
+//
+// Plain text built from the same facts the engine reads, with no model in
+// the loop. Offered only next to the two checklist items they answer, and
+// only while that step is still outstanding.
+
+function draftFor(ruleId, facts) {
+  const seller = facts.transfer.transferor;
+  const buyer = facts.transfer.transferee;
+  const contribution = `US$${facts.transfer.transferor_capital_contribution.toLocaleString('en-US')}`;
+  const fraction = facts.transfer.fraction < 1 ? `${Math.round(facts.transfer.fraction * 100)}% of` : 'the whole of';
+  const completion = Dates.formatReadable(facts.transfer.proposed_completion);
+  const today = Dates.formatReadable(facts.as_of);
+  if (ruleId === 'C-CONSENT' && facts.company.consent.status !== 'received') {
+    return {
+      title: 'Draft consent request to Helion',
+      citation: 'SA 3.1',
+      body: `To the Board of Directors of Helion Robotics, Inc.\n\nRe: Request for written consent to a Transfer under section 3.1 of the Stockholders' Agreement\n\n${seller} proposes to Transfer ${fraction} its interest (Capital Contribution ${contribution}) in Northgate Helion SPV LP to ${buyer}, with completion proposed for ${completion}.\n\nUnder section 3.1 of the Stockholders' Agreement, this Transfer requires the Company's prior written consent, approved by the Board. We ask the Board to consider this request and confirm its consent in writing. Please note that, under section 3.4, silence is not consent.\n\nDated ${today}.`,
+    };
+  }
+  if (ruleId === 'C-ROFR-NOTICE' && facts.company.rofr_notice.status !== 'delivered') {
+    return {
+      title: 'Draft Transfer Notice',
+      citation: 'SA 4.1',
+      body: `To the Board of Directors of Helion Robotics, Inc.\n\nRe: Transfer Notice under section 4.1 of the Stockholders' Agreement\n\n${seller} gives notice of a proposed Transfer of ${fraction} its interest (Capital Contribution ${contribution}) in Northgate Helion SPV LP to ${buyer}, with completion proposed for ${completion}.\n\nThis notice is given under section 4.1 of the Stockholders' Agreement and offers the Company the right of first refusal described in section 4.2. The exercise period runs from the Company's receipt of this notice. Please acknowledge receipt.\n\nDated ${today}.`,
+    };
+  }
+  return null;
+}
+
+function toggleDraftPane(container, draft) {
+  const existing = container.querySelector('.draft-pane');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  const pane = el('div', 'draft-pane');
+  const head = el('div', 'draft-pane-head');
+  head.appendChild(el('span', 'draft-pane-label', 'Draft for review. Not legal advice.'));
+  const copyBtn = el('button', 'btn btn-ghost btn-sm', 'Copy');
+  copyBtn.type = 'button';
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(draft.body);
+      showToast('Draft copied to clipboard', false);
+    } catch (e) {
+      showToast('Could not copy. Select the text and copy it manually.', false);
+    }
+  });
+  head.appendChild(copyBtn);
+  pane.appendChild(head);
+  pane.appendChild(el('pre', 'draft-pane-body', draft.body));
+  container.appendChild(pane);
+}
+
+function lowerFirst(text) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
 const BUYERS = [
@@ -489,6 +928,8 @@ function buildDealSections(facts) {
         currentValue: facts.transfer.transferee,
         buildOverride: (v) => {
           const b = buyerByName(v);
+          // The request's own buyer, re-selected: keep its recorded facts.
+          if (!b) return { transfer: { transferee: v } };
           const override = { transfer: { transferee: v, transferee_relationship: b.relationship, transferee_is_competitor: b.competitor } };
           // A Permitted Transferee under LPA 8.2 / SA 3.2 needs its own
           // notice evidence, not the "not_applicable" default left over from
@@ -782,14 +1223,23 @@ function renderField(field) {
     select.className = 'choice-select';
     select.disabled = Boolean(field.disabledReason);
     select.setAttribute('aria-label', field.label);
-    for (const choice of field.choices) {
+    // A request's own party (for example a queue row's seller) may not be
+    // one of the preset choices; list it first so the control shows the
+    // party the request is actually about rather than the first preset.
+    const choices = field.choices.some((c) => String(c.value) === String(field.currentValue)) || field.currentValue == null
+      ? field.choices
+      : [{ value: field.currentValue, label: String(field.currentValue) }, ...field.choices];
+    for (const choice of choices) {
       const opt = document.createElement('option');
       opt.value = choice.value;
       opt.textContent = choice.label;
       opt.selected = String(choice.value) === String(field.currentValue);
       select.appendChild(opt);
     }
-    select.addEventListener('change', () => applyOverride(field.buildOverride(select.value)));
+    select.addEventListener('change', () => {
+      const picked = choices.find((c) => String(c.value) === select.value);
+      applyOverride(field.buildOverride(select.value), `${field.label} set to ${picked ? picked.label : select.value}`);
+    });
     wrap.appendChild(select);
   } else if (field.kind === 'select') {
     const group = el('div', 'segmented');
@@ -802,7 +1252,10 @@ function renderField(field) {
       btn.disabled = Boolean(field.disabledReason);
       const pressed = String(choice.value) === String(field.currentValue);
       btn.setAttribute('aria-pressed', String(pressed));
-      btn.addEventListener('click', () => applyOverride(field.buildOverride(choice.value)));
+      btn.addEventListener('click', () => {
+        if (pressed) return;
+        applyOverride(field.buildOverride(choice.value), `${field.label} set to ${choice.label}`);
+      });
       group.appendChild(btn);
     }
     wrap.appendChild(group);
@@ -816,7 +1269,10 @@ function renderField(field) {
     input.disabled = Boolean(field.disabledReason);
     if (field.kind === 'number') input.step = 'any';
     if (field.currentValue !== undefined && field.currentValue !== null) input.value = field.currentValue;
-    input.addEventListener('change', () => applyOverride(field.buildOverride(input.value)));
+    input.addEventListener('change', () => {
+      const shown = dateHint(field.kind, input.value) || (input.value === '' ? 'blank' : input.value);
+      applyOverride(field.buildOverride(input.value), `${field.label} set to ${shown}`);
+    });
     row.appendChild(input);
     const hint = dateHint(field.kind, field.currentValue);
     if (hint) row.appendChild(el('span', 'field-date-hint', hint));
@@ -857,9 +1313,9 @@ function renderDealForm(facts, decidingId, ruleMap) {
   if (decidingSecId) state.dealCollapsed.delete(decidingSecId);
 
   for (const section of sections) {
-    const sectionEl = el('section', 'deal-section');
-    sectionEl.id = section.id;
     const isDeciding = section.id === decidingSecId;
+    const sectionEl = el('section', 'deal-section' + (isDeciding ? ' is-deciding' : ''));
+    sectionEl.id = section.id;
 
     const collapsed = state.dealCollapsed.has(section.id);
     const toggle = document.createElement('button');
@@ -875,7 +1331,11 @@ function renderDealForm(facts, decidingId, ruleMap) {
       render();
     });
     sectionEl.appendChild(toggle);
-    if (!collapsed) for (const field of section.fields) sectionEl.appendChild(renderField(field));
+    if (!collapsed) {
+      const fields = el('div', 'deal-fields');
+      for (const field of section.fields) fields.appendChild(renderField(field));
+      sectionEl.appendChild(fields);
+    }
     container.appendChild(sectionEl);
   }
 }
@@ -899,38 +1359,60 @@ function gateGroupStatus(decision, ruleMap, gateIds) {
   return 'Met';
 }
 
-function verdictLabelFor(decision) {
-  if (decision.verdict === 'BLOCKED') return { text: 'BLOCKED', cls: 'blocked' };
-  if (decision.verdict === 'ESCALATE') return { text: 'LAWYER REVIEW', cls: 'escalate' };
-  const outstandingCount = decision.results.filter((r) => r.state === 'OUTSTANDING').length;
-  if (outstandingCount > 0) return { text: `${outstandingCount} ACTION${outstandingCount === 1 ? '' : 'S'} OUTSTANDING`, cls: '' };
-  return { text: 'READY FOR THE GP TO RECORD', cls: '' };
-}
+const ANSWER_SUBLINES = {
+  blocked: 'A known condition has failed. Nothing moves until it is cured.',
+  lawyer: 'Evidence is missing, unclear or conflicting. A lawyer decides before anything moves.',
+  actions: 'Nothing blocks this transfer, but these steps must be completed before the GP can record it.',
+  ready: 'Every condition is evidenced. Recording in the Register (LPA 8.5) is a human decision.',
+};
+
+const GATE_STATUS_BADGE = {
+  Fails: 'badge-blocked',
+  'Needs a lawyer': 'badge-lawyer',
+  'Action needed': 'badge-action',
+  Met: 'badge-ready',
+  'Not relevant': 'badge-quiet',
+};
 
 function renderAnswer(decision, ruleMap) {
-  const verdict = verdictLabelFor(decision);
-  const headline = ensureSentence(humanize(decision.headline));
+  const status = statusOf(decision);
+  const headline = ensureSentence(queueWording(humanize(decision.headline)));
 
   const mobileVerdict = document.getElementById('mobile-verdict');
-  mobileVerdict.textContent = verdict.text;
-  mobileVerdict.className = 'mobile-verdict' + (verdict.cls ? ` ${verdict.cls}` : '');
+  mobileVerdict.textContent = status.short;
+  mobileVerdict.className = `mobile-verdict badge ${status.badge}`;
   document.getElementById('mobile-headline').textContent = headline;
 
   const panel = document.getElementById('answer-panel');
   panel.innerHTML = '';
-  panel.appendChild(el('p', 'verdict-label' + (verdict.cls ? ` ${verdict.cls}` : ''), verdict.text));
-  panel.appendChild(el('h1', 'answer-headline', headline));
+  panel.className = `answer-panel card is-${status.key === 'actions' ? 'action' : status.key}`;
+  panel.appendChild(el('p', 'answer-eyebrow', 'The answer today'));
+  panel.appendChild(el('span', `badge badge-lg ${status.badge}`, status.long));
+  panel.appendChild(el('h2', 'answer-headline', headline));
+  panel.appendChild(el('p', 'answer-sub', ANSWER_SUBLINES[status.key]));
 
-  const docList = el('dl', 'doc-status-list');
+  const docList = el('ul', 'doc-status-list');
+  docList.setAttribute('aria-label', 'Each document');
   for (const group of GATE_GROUPS) {
-    const status = gateGroupStatus(decision, ruleMap, group.gates);
-    docList.appendChild(el('dt', null, group.label));
-    const statusClass = status === 'Fails' ? 'fails' : status === 'Needs a lawyer' ? 'needs-lawyer' : status === 'Action needed' ? 'action-needed' : '';
-    docList.appendChild(el('dd', statusClass, status));
+    const gateStatus = gateGroupStatus(decision, ruleMap, group.gates);
+    const li = el('li');
+    li.appendChild(el('span', null, group.label));
+    li.appendChild(el('span', `badge ${GATE_STATUS_BADGE[gateStatus] || 'badge-quiet'}`, gateStatus));
+    docList.appendChild(li);
   }
   panel.appendChild(docList);
 
+  const next = status.key === 'actions' ? nextActionOf(decision) : null;
+  if (next) {
+    const box = el('div', 'answer-next');
+    box.appendChild(el('strong', null, next.due ? `Next · ${next.owner} · due ${Dates.formatReadable(next.due)}` : `Next · ${next.owner}`));
+    box.appendChild(document.createTextNode(ensureSentence(queueWording(humanize(next.text)))));
+    panel.appendChild(box);
+  }
+
   const key = `${decision.verdict}|${decision.headline}`;
+  if (state.lastAnswerId !== state.route.id) state.lastAnswerKey = null;
+  state.lastAnswerId = state.route.id;
   if (state.lastAnswerKey !== null && state.lastAnswerKey !== key) {
     for (const target of [panel, document.getElementById('mobile-answer-bar')]) {
       target.classList.remove('answer-flash');
@@ -953,7 +1435,7 @@ function renderWhy(decision, decidingId, ruleMap) {
   const rule = ruleMap.get(decidingId);
   const result = decision.results.find((r) => r.rule_id === decidingId);
 
-  container.appendChild(el('p', 'why-reason', result.reason));
+  container.appendChild(el('p', 'why-reason', queueWording(result.reason)));
 
   if (result.computed) {
     const working = Object.values(result.computed).map((v) => v.working).filter(Boolean).join(' · ');
@@ -969,7 +1451,7 @@ function renderWhy(decision, decidingId, ruleMap) {
       source.appendChild(el('blockquote', null, clause.text));
       const link = document.createElement('button');
       link.type = 'button';
-      link.className = 'open-doc';
+      link.className = 'open-doc btn btn-ghost btn-sm';
       link.textContent = `Open the full document at p. ${clause.page}`;
       link.addEventListener('click', () => openDocViewer(top.doc, top.section));
       source.appendChild(link);
@@ -1006,21 +1488,75 @@ function renderNext(decision, ruleMap) {
   if (decision.verdict === 'BLOCKED') {
     heading.textContent = 'What would change the answer';
     for (const item of decision.checklist) {
-      const li = document.createElement('li');
+      const li = el('li', 'is-cure');
       const rule = ruleMap.get(item.source_rule);
       const text = item.cure ? ensureSentence(humanize(item.cure)) : (rule && rule.no_cure) || 'Nothing on these facts.';
-      li.appendChild(el('div', null, text));
+      const top = el('div', 'item-top');
+      top.appendChild(el('span', 'badge badge-blocked', rule ? rule.title : 'Fails'));
+      li.appendChild(top);
+      li.appendChild(el('div', 'item-text', text));
       list.appendChild(li);
     }
     return;
   }
 
-  heading.textContent = 'What happens next';
+  heading.textContent = 'Next actions';
+  const facts = decision.audit.facts;
+  const shown = new Set();
   for (const item of decision.checklist) {
-    const li = document.createElement('li');
-    if (item.owner) li.appendChild(el('div', 'owner', item.owner));
-    li.appendChild(el('div', null, ensureSentence(humanize(item.text))));
-    if (item.due) li.appendChild(el('div', 'due', 'Due ' + Dates.formatReadable(item.due)));
+    const li = el('li', item.source_rule ? '' : 'item-final');
+    const top = el('div', 'item-top');
+    if (item.owner) top.appendChild(el('span', 'owner', item.owner));
+    if (item.due) top.appendChild(el('span', 'due', 'Due ' + Dates.formatReadable(item.due)));
+    if (top.childNodes.length) li.appendChild(top);
+    li.appendChild(el('div', 'item-text', ensureSentence(queueWording(humanize(item.text)))));
+
+    // One tap to log the evidence for this step. The same fact change can
+    // answer two checklist items (Harbour's deemed consent and GP consent),
+    // so each distinct change gets one button.
+    const action = item.source_rule ? loggableAction(item.source_rule, facts) : null;
+    const signature = action && JSON.stringify(action.override);
+    const draft = item.source_rule ? draftFor(item.source_rule, facts) : null;
+    if ((action && !shown.has(signature)) || draft) {
+      const showAction = action && !shown.has(signature);
+      if (showAction) shown.add(signature);
+      const row = el('div', 'item-actions');
+      if (showAction) {
+        const btn = el('button', 'btn btn-secondary btn-sm', action.label);
+        btn.type = 'button';
+        btn.dataset.rule = item.source_rule;
+        btn.addEventListener('click', () => runLoggedAction(action));
+        row.appendChild(btn);
+      }
+      if (draft) {
+        const draftBtn = el('button', 'btn btn-ghost btn-sm', draft.title);
+        draftBtn.type = 'button';
+        draftBtn.setAttribute('aria-expanded', 'false');
+        draftBtn.addEventListener('click', () => {
+          const expanded = draftBtn.getAttribute('aria-expanded') === 'true';
+          draftBtn.setAttribute('aria-expanded', String(!expanded));
+          toggleDraftPane(li, draft);
+        });
+        row.appendChild(draftBtn);
+      }
+      if (action) row.appendChild(el('span', 'item-hint', `Dated ${Dates.formatReadable(facts.as_of)}`));
+      li.appendChild(row);
+    }
+    list.appendChild(li);
+  }
+}
+
+function renderActivity(id) {
+  const list = document.getElementById('activity-list');
+  list.innerHTML = '';
+  const entries = state.activity[id] || [];
+  if (!entries.length) {
+    list.appendChild(el('li', 'activity-empty', 'Nothing logged in this session yet. Log a next action or change a fact and it appears here, with the answer before and after.'));
+    return;
+  }
+  for (const entry of entries) {
+    const li = el('li', null, ensureSentence(entry.text));
+    li.appendChild(el('span', 'activity-meta', ensureSentence(entry.meta)));
     list.appendChild(li);
   }
 }
@@ -1035,7 +1571,12 @@ function renderRuleRow(rule, result) {
   nameWrap.appendChild(el('span', 'name', rule.title));
   nameWrap.appendChild(el('span', 'detail', result.reason));
   row.appendChild(nameWrap);
-  row.appendChild(el('span', 'state' + (nonMet ? ' nonmet' : ''), STATE_LABELS[result.state] || result.state));
+  const stateBadge =
+    result.state === 'FAILED' ? 'badge-blocked'
+      : result.state === 'UNKNOWN' || result.state === 'CONTRADICTORY' ? 'badge-lawyer'
+        : result.state === 'OUTSTANDING' ? 'badge-action'
+          : result.state === 'SATISFIED' ? 'badge-ready' : 'badge-quiet';
+  row.appendChild(el('span', `badge ${stateBadge}` + (nonMet ? ' nonmet' : ''), STATE_LABELS[result.state] || result.state));
   wrap.appendChild(row);
   return wrap;
 }
@@ -1162,12 +1703,17 @@ function handleDrawerKeydown(e) {
 
 function runNavAction(action, triggerEl) {
   if (action === 'requests') navigate('#/');
-  else if (action === 'new') navigate('#/request/NEW');
+  else if (action === 'new') startNewRequestWizard();
+  else if (action === 'deadlines') navigate('#/deadlines');
   else if (action === 'scenarios') openPicker(triggerEl);
   else if (action === 'documents') openDocViewer('LPA', null);
   else if (action === 'safe') {
-    navigate('#/');
-    setTimeout(() => document.getElementById('safe-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+    if (state.route.view === 'queue') {
+      document.getElementById('safe-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      state.scrollToSafe = true;
+      navigate('#/');
+    }
   }
 }
 
@@ -1328,25 +1874,55 @@ function handleDocViewerKeydown(e) {
 
 // --- Rendering root -------------------------------------------------------
 
-function requestLabel(id, facts) {
-  const meta = QUEUE_META[id];
-  const parties = `${facts.transfer.transferor} → ${facts.transfer.transferee}`;
-  return meta ? `${meta.ref} ${parties}` : `New request · ${parties}`;
-}
-
-function renderBreadcrumb(id, facts) {
+function renderBreadcrumb(id) {
   const el2 = document.getElementById('breadcrumb');
   el2.innerHTML = '';
   const link = el('a', null, 'Requests');
   link.href = '#/';
   el2.appendChild(link);
   el2.appendChild(el('span', 'sep', '/'));
-  el2.appendChild(el('span', 'current', requestLabel(id, facts)));
+  const meta = QUEUE_META[id];
+  el2.appendChild(el('span', 'current', meta ? meta.ref : id === 'NEW' ? 'New request' : `Scenario ${id}`));
+}
+
+function renderRequestHead(facts) {
+  const t = facts.transfer;
+  document.getElementById('request-title').textContent = `${t.transferor} → ${t.transferee}`;
+  const kind = t.kind === 'pledge' ? 'Pledge' : 'Sale';
+  const stake = t.fraction >= 1 ? 'whole stake' : `${Math.round(t.fraction * 100)}% of the stake`;
+  const amount = Math.round(t.transferor_capital_contribution * Math.min(t.fraction, 1)).toLocaleString('en-US');
+  document.getElementById('request-meta').textContent =
+    `${kind} of ${stake}, US$${amount} of Capital Contribution · completion ${Dates.formatReadable(t.proposed_completion)} · checked as of ${Dates.formatReadable(facts.as_of)}`;
 }
 
 function renderTopbarContext() {
   const el2 = document.getElementById('topbar-context');
-  if (el2 && DATA.baseFacts) el2.textContent = `Northgate Helion SPV · Checked as of ${Dates.formatReadable(DATA.baseFacts.as_of)}`;
+  if (el2 && DATA.baseFacts) el2.textContent = `Northgate Helion SPV LP · as of ${Dates.formatReadable(DATA.baseFacts.as_of)}`;
+}
+
+function renderNavCurrent() {
+  const route = state.route;
+  const current = route.view === 'new' ? 'new' : route.view === 'deadlines' ? 'deadlines' : 'requests';
+  for (const btn of document.querySelectorAll('[data-nav]')) {
+    if (btn.dataset.nav === current) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  }
+}
+
+// The compact answer bar appears on small screens only once the decision
+// card has scrolled out of view, so the answer is never off screen.
+let answerObserver = null;
+
+function watchAnswerPanel() {
+  if (answerObserver || !('IntersectionObserver' in window)) return;
+  const bar = document.getElementById('mobile-answer-bar');
+  answerObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) bar.classList.toggle('is-shown', !entry.isIntersecting && entry.boundingClientRect.top < 0);
+    },
+    { rootMargin: '-56px 0px 0px 0px' }
+  );
+  answerObserver.observe(document.getElementById('answer-panel'));
 }
 
 function renderSidebarCounts() {
@@ -1370,32 +1946,43 @@ function renderRequestView() {
   const ruleMap = new Map(DATA.rulebook.rules.map((r) => [r.id, r]));
   const decidingId = decidingRuleId(decision);
 
-  renderBreadcrumb(id, facts);
+  renderBreadcrumb(id);
+  renderRequestHead(facts);
   renderDealForm(facts, decidingId, ruleMap);
   renderAnswer(decision, ruleMap);
   renderWhy(decision, decidingId, ruleMap);
   renderNext(decision, ruleMap);
+  renderActivity(id);
   renderAllRules(decision, ruleMap);
   renderAudit(decision);
 }
 
 function render() {
   state.route = parseHash();
-  const isRequest = state.route.view === 'request';
+  const view = state.route.view;
+  const isRequest = view === 'request';
+  const isNew = view === 'new';
+  const isDeadlines = view === 'deadlines';
+  const isQueue = view === 'queue';
 
-  document.getElementById('view-queue').hidden = isRequest;
+  document.getElementById('view-queue').hidden = !isQueue;
+  document.getElementById('view-new').hidden = !isNew;
+  document.getElementById('view-deadlines').hidden = !isDeadlines;
   document.getElementById('view-request').hidden = !isRequest;
   document.getElementById('mobile-answer-bar').hidden = !isRequest;
   document.body.classList.toggle('view-request', isRequest);
 
+  if (!isRequest) document.getElementById('mobile-answer-bar').classList.remove('is-shown');
+
   renderTopbarContext();
   renderSidebarCounts();
+  renderNavCurrent();
+  watchAnswerPanel();
 
-  if (isRequest) {
-    renderRequestView();
-  } else {
-    renderQueue();
-  }
+  if (isRequest) renderRequestView();
+  else if (isNew) renderWizard();
+  else if (isDeadlines) renderDeadlines();
+  else renderQueue();
 }
 
 // --- Theme --------------------------------------------------------------
@@ -1762,7 +2349,23 @@ function wireEvents() {
   document.getElementById('scenario-search').addEventListener('input', (e) => renderScenarioList(e.target.value));
   document.getElementById('scenario-picker').addEventListener('keydown', handlePickerKeydown);
 
-  window.addEventListener('hashchange', render);
+  document.getElementById('queue-search').addEventListener('input', (e) => {
+    state.queueQuery = e.target.value;
+    renderQueue();
+  });
+  document.getElementById('toast-undo').addEventListener('click', undoLast);
+
+  window.addEventListener('hashchange', () => {
+    hideToast();
+    state.undo = null;
+    render();
+    if (state.scrollToSafe) {
+      state.scrollToSafe = false;
+      document.getElementById('safe-section')?.scrollIntoView({ block: 'start' });
+    } else {
+      window.scrollTo(0, 0);
+    }
+  });
 }
 
 async function init() {
