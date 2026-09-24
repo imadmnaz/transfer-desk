@@ -24,3 +24,16 @@ Every review of this project is recorded here: what was found, what I decided, a
 | 11 | No deadline for the GP to record a transfer once conditions are met. | Deferred | Realistic. Listed as a known limitation; the tool can track this step but not force it. |
 | 12 | Some operative terms are open-ended ("principal asset", "beneficial owners", "complete request"). | Partly accepted | "Complete request" is now defined (see 7) and the owner-count timing is set (see 8). "Principal asset" is left as ordinary drafting. |
 | 13 | The signature wording about powers of attorney looked imprecise. | Accepted | Reworded to execution "for itself and as attorney-in-fact for each Limited Partner pursuant to the power of attorney granted under this Agreement". |
+
+## Round 2: blind scenario review
+
+**Reviewer:** cross-model review. The reviewer decided all 31 scenarios from the revised documents alone, before seeing the expected answers.
+
+**Result.** The reviewer's legal reasoning matched the expected analysis in all 31 cases: which provisions decide each one, which approvals are independent, where silence is not consent, and every deadline except the one below. Its verdict label differed in 9 cases, and every one of those differences traced to the same point of vocabulary rather than law.
+
+| # | Finding | Decision | Change made |
+|---|---|---|---|
+| 1 | Verdict label differed in T02, T06, T15, T16, T19, T20, T26 and T29. In each, a step was known but not yet done (for example, consent not yet requested). The reviewer labelled these ESCALATE or BLOCKED; the expected answer is CHECKLIST_READY, because nothing is unknown or failed and the next step is clear. | Rejected on the verdict; accepted on the underlying point | The verdicts stand, because they follow the stated definitions and escalating known, actionable steps would bury genuine escalations. But the disagreement showed that the words "Checklist ready" read as "ready to close". The interface now never shows them: it shows "N actions outstanding" or, only when nothing is left, "Ready for the GP to record". |
+| 2 | "At least five (or ten) Business Days before the Transfer takes effect" was read as clear days, excluding both the day of receipt and the effective day, giving an earliest completion one Business Day later than expected (T07, and T08's cure date of 14 October rather than 13 October). | Accepted | This is a genuine ambiguity in the drafting, and courts have read similar wording both ways. LPA 8.2 and SA 3.2 now say "clear Business Days" and spell out the exclusions. The engine uses the (N+1)th Business Day after receipt, and T08's expected cure date is now 14 October 2026. |
+| 3 | T13: SA 4.3 prohibits a partial exercise of the right of first refusal but does not say what a purported partial exercise does. | Agreed | Already ESCALATE by design: the effect of an invalid partial exercise needs a lawyer. |
+| 4 | T17: the documents do not say whether a consent can be withdrawn, so an approval followed by a refusal cannot be resolved mechanically. | Agreed | Already ESCALATE by design. |

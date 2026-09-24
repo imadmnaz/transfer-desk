@@ -69,7 +69,7 @@ Each document exists in two forms with identical text: a formatted PDF (what a h
 - **"N Business Days after X"**: count Business Days strictly after X. The Nth one is the result.
 - **ROFR exercise period** (SA 4.2) ends at the end of the 20th Business Day after receipt of a complete Transfer Notice. It has expired if `as_of` is after that date.
 - **Completion window** (SA 4.5): completion must be on or before the date 45 Business Days after the end of the exercise period, or after the waiver date if waived earlier.
-- **Permitted-transfer notices**: completion must be on or after 5 Business Days after GP receipt (LPA 8.2) and 10 Business Days after company receipt (SA 3.2).
+- **Permitted-transfer notices use clear days** (LPA 8.2, SA 3.2): N full Business Days must fall between the day of receipt and the day the transfer takes effect, excluding both. So the earliest permitted completion is the (N+1)th Business Day after receipt: the 6th after GP receipt (LPA 8.2, five clear days) and the 11th after company receipt (SA 3.2, ten clear days).
 - **Harbour deemed consent** (SL para 2): deemed given at the end of the 10th Business Day after GP receipt of a complete request, if no response. Satisfied only if `as_of` is after that date.
 - Every evaluation uses `facts.as_of`, never the real clock.
 
@@ -200,7 +200,7 @@ Every rule in `rulebook.json` has: `id`, `gate`, `title`, `description` (plain E
 **Fund gate**
 
 - `F-CONSENT` (LPA 8.1, 8.8): required unless the transfer is to a Permitted Transferee under LPA 8.2 (`affiliate`, `family_trust`, `estate`) or a Harbour Transferee under the side letter. `received` → SATISFIED. `refused` → FAILED. `not_requested` or `requested` → OUTSTANDING (unless deemed under S-DEEMED-CONSENT). `unknown` → UNKNOWN. `contradictory` → CONTRADICTORY.
-- `F-PERMITTED-NOTICE` (LPA 8.2): applies only to LPA Permitted Transferees. `delivered` and completion on or after receipt + 5 BD → SATISFIED. `delivered` but completion too early → FAILED, cure "move completion to on or after {date}". `not_sent` → OUTSTANDING. `sent_no_proof` → UNKNOWN.
+- `F-PERMITTED-NOTICE` (LPA 8.2): applies only to LPA Permitted Transferees. `delivered` and completion on or after the 6th Business Day after receipt (five clear days) → SATISFIED. `delivered` but completion too early → FAILED, cure "move completion to on or after {date}". `not_sent` → OUTSTANDING. `sent_no_proof` → UNKNOWN.
 - `F-MIN-HOLDING` (LPA 8.3): if `fraction` < 1, the transferred Capital Contribution is `contribution × fraction` and the retained amount is the balance (LPA 8.3, second sentence). Both must be ≥ 10,000. Otherwise FAILED with cure.
 - `F-BO-LIMIT` (LPA 8.4(d); LPA 1.1 "Beneficial Owner Limit", measured immediately after giving effect to the Transfer): new count = current + (transferee is new ? 1 : 0) − (transferor exits fully ? 1 : 0). Over 95 → FAILED with cure. `null` current → UNKNOWN. Not applicable to a pledge (LPA 8.4 last sentence).
 
@@ -208,7 +208,7 @@ Every rule in `rulebook.json` has: `id`, `gate`, `title`, `description` (plain E
 
 - `C-COMPETITOR` (SA 3.3, Schedule 2): `yes` → FAILED regardless of any consent. `unknown` → UNKNOWN.
 - `C-CONSENT` (SA 3.1, 3.4): required unless the transferee is an SA Permitted Transferee (`affiliate`, `family_trust`, `estate`). Note that `harbour_transferee` is **not** an SA Permitted Transferee (SA 1.1 proviso). Same state mapping as F-CONSENT, except silence is never consent (SA 3.4) and there is no deemed-consent path.
-- `C-PERMITTED-NOTICE` (SA 3.2): applies only to SA Permitted Transferees. Same mapping as F-PERMITTED-NOTICE with 10 Business Days.
+- `C-PERMITTED-NOTICE` (SA 3.2): applies only to SA Permitted Transferees. Same mapping as F-PERMITTED-NOTICE with ten clear Business Days, so the earliest completion is the 11th Business Day after receipt.
 - `C-ROFR-NOTICE` (SA 4.1, 4.2, 9.1): applies to a sale to anyone other than an SA Permitted Transferee. Not applicable to a pledge. `not_sent` → OUTSTANDING ("serve a complete Transfer Notice"). `sent_no_proof` → UNKNOWN ("the exercise period cannot be shown to have started"). `complete` = `no` or `unknown` → UNKNOWN. `delivered` → compute receipt and expiry.
 - `C-ROFR-RESPONSE` (SA 4.2 to 4.4): only evaluated once the Transfer Notice is `delivered`; otherwise NOT_APPLICABLE (pending notice). `waived` → SATISFIED. `exercised_whole` → FAILED ("the Company is buying the interest; the sale to this transferee cannot proceed"). `exercised_partial` → UNKNOWN ("SA 4.3 permits exercise in whole only; a purported partial exercise needs legal review"). `none` with period running: if `proposed_completion` is on or before the expiry date → FAILED, cure "move completion to after {expiry} or obtain a written waiver"; otherwise OUTSTANDING, action "wait until {expiry} or obtain written waiver", due = expiry. `none` with period expired → SATISFIED. `unknown` → UNKNOWN.
 - `C-ROFR-WINDOW` (SA 4.5): evaluated only once the period has ended or been waived; otherwise NOT_APPLICABLE. Completion must fall within 45 Business Days. Later → FAILED, cure "serve a fresh Transfer Notice".
@@ -237,8 +237,8 @@ Each scenario overrides `base-facts.json`. Tests assert the verdict, the listed 
 | T04 | GP consent refused | fund.gp_consent = refused | BLOCKED | F-CONSENT FAILED |
 | T05 | Company consent only "agreed on a call" | company.consent = unknown | ESCALATE | C-CONSENT UNKNOWN |
 | T06 | Company silent for two months | company.consent = requested, requested_at 2026-08-03T10:00 | CHECKLIST_READY | C-CONSENT OUTSTANDING (never SATISFIED); reason cites SA 3.4 |
-| T07 | Permitted transfer to transferor's affiliate | transferee "Aldwych Angels II Ltd", relationship affiliate; gp_permitted_notice and company.permitted_notice delivered 2026-09-15T10:00; rofr_notice not_sent; rofr_response none; gp_consent not_requested; company.consent not_requested | CHECKLIST_READY | F-CONSENT, C-CONSENT, C-ROFR-NOTICE all NOT_APPLICABLE; both notices SATISFIED |
-| T08 | Permitted transfer, company notice too late | as T07 but company.permitted_notice delivered 2026-09-28T11:00, completion 2026-10-02 | BLOCKED | C-PERMITTED-NOTICE FAILED; cure date 2026-10-13 (skips 12 Oct holiday) |
+| T07 | Permitted transfer to transferor's affiliate | transferee "Aldwych Angels II Ltd", relationship affiliate; gp_permitted_notice and company.permitted_notice delivered 2026-09-15T10:00; rofr_notice not_sent; rofr_response none; gp_consent not_requested; company.consent not_requested | CHECKLIST_READY | F-CONSENT, C-CONSENT, C-ROFR-NOTICE all NOT_APPLICABLE; both notices SATISFIED (earliest completion 2026-09-23 for the GP notice and 2026-09-30 for the company notice) |
+| T08 | Permitted transfer, company notice too late | as T07 but company.permitted_notice delivered 2026-09-28T11:00, completion 2026-10-02 | BLOCKED | C-PERMITTED-NOTICE FAILED; cure date 2026-10-14 (ten clear Business Days, skipping the 12 Oct holiday) |
 | T09 | Sale to a Competitor with every consent in hand | transferee "Kestrel Automation Ltd", is_competitor yes | BLOCKED | C-COMPETITOR FAILED despite C-CONSENT SATISFIED |
 | T10 | ROFR period still running | rofr_notice delivered 2026-09-25T10:00; rofr_response none; completion 2026-11-02 | CHECKLIST_READY | C-ROFR-RESPONSE OUTSTANDING; expiry 2026-10-26 |
 | T11 | ROFR notice sent, no proof of delivery | rofr_notice sent_no_proof; rofr_response none | ESCALATE | C-ROFR-NOTICE UNKNOWN |
@@ -287,7 +287,7 @@ Calm, exact and quiet, like Stripe's documentation or Linear. Typography and whi
 1. **Header**: "Transfer Desk" and a one-line subtitle: "Clears SPV secondary transfers against every document that governs them." Small "Synthetic documents · not legal advice" tag.
 2. **Scenario picker**: a horizontal scrolling row of chips (T01 to T31), plus "Custom".
 3. **Request card**: seller → buyer, interest, proposed completion date, as-of date.
-4. **Verdict banner**: the verdict in large type and the one-sentence headline.
+4. **Verdict banner**: the verdict in large type and the one-sentence headline. Never show the bare words "Checklist ready", because a reader takes them to mean ready to close. When the verdict is CHECKLIST_READY with outstanding actions, the banner reads **"N actions outstanding"** with the subline "Nothing blocks this transfer, but these steps must be completed before the GP can record it." When there are none, it reads **"Ready for the GP to record"** with the subline "Every condition is evidenced. Recording in the Register (LPA 8.5) is a human decision."
 5. **Four gates as a vertical stepper**: Fund, Side letter, Company, Buyer and regulatory. Each rule row shows a state pill, the plain-English reason and a citation in mono. Tapping the citation expands the exact clause text from `clauses.json` inline, with a quiet "View in document, p. N" link that opens the PDF at that page (`docs/source/<file>.pdf#page=N`) in a new tab.
 6. **Evidence toggles**: under each gate, the relevant facts as segmented controls. Changing one re-runs the engine instantly and animates only the verdict change (150ms fade).
 7. **Checklist**: a compact timeline with owner, action and date.

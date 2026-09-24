@@ -44,7 +44,7 @@ _[Sections 1.2 to 7.9 omitted from this extract]_
 
 **8.1 Restriction on Transfers.** No Limited Partner may Transfer all or any part of its Interest without the prior written consent of the General Partner, which may be given or withheld in its sole discretion, except for a Transfer permitted under Section 8.2.
 
-**8.2 Permitted Transfers.** A Limited Partner may Transfer all or part of its Interest to a Permitted Transferee without the consent of the General Partner, provided that (a) the Limited Partner gives the General Partner written notice of the proposed Transfer at least five Business Days before the Transfer is to take effect, and (b) the conditions in Section 8.4 are satisfied.
+**8.2 Permitted Transfers.** A Limited Partner may Transfer all or part of its Interest to a Permitted Transferee without the consent of the General Partner, provided that (a) the Limited Partner gives the General Partner written notice of the proposed Transfer at least five clear Business Days before the Transfer is to take effect, excluding both the day on which the notice is received and the day on which the Transfer takes effect, and (b) the conditions in Section 8.4 are satisfied.
 
 **8.3 Minimum Holdings.** Following any Transfer of part of an Interest, each of the transferor and the transferee must hold an Interest with a Capital Contribution of not less than US$10,000, unless the transferor is Transferring its entire Interest. For this purpose, the Capital Contribution attributable to the part Transferred is the transferor's Capital Contribution multiplied by the proportion of its Interest being Transferred, and the balance remains attributable to the transferor.
 

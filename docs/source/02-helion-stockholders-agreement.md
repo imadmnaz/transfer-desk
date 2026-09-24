@@ -46,7 +46,7 @@ _[Section 2 omitted from this extract]_
 
 **3.1 Company Consent.** No Stockholder shall Transfer any Shares, and no Investment Vehicle shall permit, register or give effect to any Indirect Transfer, without the prior written consent of the Company, approved by the Board.
 
-**3.2 Permitted Transferees.** Section 3.1 does not apply to an Indirect Transfer to a Permitted Transferee, provided that the Investment Vehicle gives the Company written notice of the Indirect Transfer, identifying the transferee, at least ten Business Days before it takes effect.
+**3.2 Permitted Transferees.** Section 3.1 does not apply to an Indirect Transfer to a Permitted Transferee, provided that the Investment Vehicle gives the Company written notice of the Indirect Transfer, identifying the transferee, at least ten clear Business Days before it takes effect, excluding both the day on which the notice is received and the day on which the Indirect Transfer takes effect.
 
 **3.3 Competitors.** No Transfer or Indirect Transfer may be made to a Competitor, whether or not the Company has consented to it.
 
