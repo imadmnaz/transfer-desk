@@ -11,39 +11,58 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<div id="sticky-bar" class="sticky-bar" hidden aria-hidden="true">
-  <span id="sticky-verdict"></span>
+
+<div id="mobile-answer-bar" class="mobile-answer-bar" aria-live="polite">
+  <div class="mobile-answer-text">
+    <span id="mobile-verdict" class="mobile-verdict"></span>
+    <span id="mobile-headline" class="mobile-headline"></span>
+  </div>
+  <a id="mobile-details-link" class="mobile-details-link" href="#why-section">Details</a>
 </div>
+
 <main class="page">
 
   <header class="bar">
     <span class="wordmark">Transfer Desk</span>
-    <p class="scn">
-      <span class="id" id="scenario-id">T09</span> ·
-      <span id="scenario-title-text">Competitor buyer</span>
-      <button id="change-link" class="change-link" type="button" aria-haspopup="dialog" aria-expanded="false">Change</button>
-    </p>
-    <button id="tour-toggle" class="tour-toggle" type="button">Replay tour</button>
   </header>
 
+  <h1 class="page-title">Can this SPV sale go ahead?</h1>
+  <p class="lede">Edit the deal below. The answer updates instantly, with the clause behind it.</p>
   <p class="tag">Synthetic documents. Not legal advice.</p>
-  <p id="reset-facts" class="reset-facts" hidden>
-    <button id="reset-facts-btn" type="button">Reset facts</button>
-  </p>
 
-  <dl id="register" class="register"></dl>
+  <div class="layout">
+    <div class="deal-col">
+      <div id="deal-form"></div>
+    </div>
 
-  <section id="tour-banner" class="tour-banner" hidden aria-live="polite"></section>
+    <aside id="answer-panel" class="answer-panel" aria-live="polite"></aside>
+  </div>
 
-  <section id="finding" class="finding" aria-live="polite"></section>
+  <section id="why-section" class="content-section">
+    <h2 class="section-title">Why</h2>
+    <div id="why-body"></div>
+  </section>
 
-  <section id="review" class="review"></section>
+  <section id="next-section" class="content-section">
+    <h2 id="next-heading" class="section-title">What happens next</h2>
+    <ol id="next-list" class="checklist"></ol>
+  </section>
 
-  <section id="notes-section"></section>
+  <section class="content-section">
+    <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="false">Every rule we checked</button>
+    <div id="all-rules-body" hidden></div>
+  </section>
 
-  <section id="checklist-section" class="checklist-section">
-    <div id="checklist-heading" class="gate-label">Checklist</div>
-    <ol id="checklist" class="checklist"></ol>
+  <section class="content-section">
+    <h2 class="section-title">Is it safe?</h2>
+    <p class="explainer">An unsafe clear is a case where a rule failed, or evidence was missing or contradictory, yet the tool said the checklist was ready anyway. This checks every combination of the facts that matter for that.</p>
+    <button id="run-sweep" class="run-sweep" type="button">Run all 486,000 combinations</button>
+    <div id="sweep-result" class="sweep-result" aria-live="polite"></div>
+  </section>
+
+  <section class="content-section">
+    <h2 class="section-title">Start from an example</h2>
+    <ul id="example-list" class="example-list"></ul>
   </section>
 
   <section id="audit-section" class="audit-section">
@@ -53,19 +72,9 @@
 
   <footer class="footer">
     <button id="theme-toggle" class="theme-toggle" type="button">Dark</button>
-    <button id="run-tests" class="run-tests" type="button">Run all tests</button>
-    <div id="scorecard" class="scorecard" hidden></div>
   </footer>
 
 </main>
-
-<div id="scenario-picker" class="scenario-picker" hidden role="dialog" aria-modal="true" aria-label="Choose a scenario">
-  <div class="picker-header">
-    <input id="scenario-search" type="text" placeholder="Search scenarios" aria-label="Search scenarios">
-    <button id="picker-close" type="button">Close</button>
-  </div>
-  <ul id="scenario-list" class="scenario-list"></ul>
-</div>
 
 <script src="engine/dates.js"></script>
 <script src="engine/engine.js"></script>
