@@ -467,6 +467,32 @@ function renderFinding(decision, decidingId) {
     for (const c of citations) citesWrap.appendChild(el('span', 'cite', formatCitation(c)));
     container.appendChild(citesWrap);
   }
+
+  updateStickyBar(labelText, decision.verdict === 'BLOCKED');
+}
+
+// The sticky bar repeats only the verdict label already shown in the
+// finding banner above; it exists so that label stays visible once the
+// banner itself has scrolled out of view (see the IntersectionObserver in
+// initStickyBar).
+function updateStickyBar(labelText, isBlocked) {
+  const bar = document.getElementById('sticky-bar');
+  bar.className = 'sticky-bar' + (isBlocked ? ' blocked' : '');
+  document.getElementById('sticky-verdict').textContent = labelText;
+}
+
+function initStickyBar() {
+  const finding = document.getElementById('finding');
+  const bar = document.getElementById('sticky-bar');
+  if (!('IntersectionObserver' in window)) return;
+  const observer = new IntersectionObserver(
+    ([entry]) => {
+      const scrolledPast = !entry.isIntersecting && entry.boundingClientRect.top < 0;
+      bar.hidden = !scrolledPast;
+    },
+    { threshold: 0 }
+  );
+  observer.observe(finding);
 }
 
 // isDeciding: the finding block above already showed this rule's reason as
@@ -520,7 +546,7 @@ function renderRuleDetail(rule, result, facts, isDeciding) {
   return detail;
 }
 
-function renderRuleRow(rule, result, isDeciding, facts) {
+function renderRuleRow(rule, result, isDeciding, facts, suppressDetailLine) {
   const wrap = el('div', 'rule-row' + (isDeciding ? ' deciding' : ''));
   const expanded = state.expandedRuleIds.has(result.rule_id);
 
@@ -531,11 +557,12 @@ function renderRuleRow(rule, result, isDeciding, facts) {
 
   const nameWrap = el('span');
   nameWrap.appendChild(el('span', 'name', rule.title));
-  nameWrap.appendChild(el('span', 'detail', truncate(result.reason, 130)));
+  if (!suppressDetailLine) {
+    nameWrap.appendChild(el('span', 'detail', truncate(result.reason, 130)));
+  }
 
-  const stateClass =
-    result.state === 'FAILED' ? ' blocked' : result.state === 'UNKNOWN' || result.state === 'CONTRADICTORY' ? ' escalate' : '';
-  const stateSpan = el('span', 'state' + stateClass, STATE_LABELS[result.state] || result.state);
+  const nonMet = result.state === 'FAILED' || result.state === 'UNKNOWN' || result.state === 'CONTRADICTORY' || result.state === 'OUTSTANDING';
+  const stateSpan = el('span', 'state' + (nonMet ? ' nonmet' : ''), STATE_LABELS[result.state] || result.state);
 
   toggle.appendChild(nameWrap);
   toggle.appendChild(stateSpan);
@@ -573,13 +600,19 @@ function renderNotApplicableRow(gateId, results, ruleMap, facts) {
   if (expanded) {
     const list = el('div', 'na-list');
     for (const result of results) {
-      list.appendChild(renderRuleRow(ruleMap.get(result.rule_id), result, false, facts));
+      list.appendChild(renderRuleRow(ruleMap.get(result.rule_id), result, false, facts, false));
     }
     wrap.appendChild(list);
   }
   return wrap;
 }
 
+// The deciding rule's own collapsed-row summary repeats its reason (the
+// "detail" line) unless the finding banner above already showed that exact
+// sentence as its explanation (true for BLOCKED and ESCALATE, per
+// renderFinding). Under CHECKLIST_READY the banner shows a generic subline
+// instead, so the deciding OUTSTANDING rule still needs its own detail line;
+// it is the only place that reason appears.
 function renderReview(decision, facts, decidingId) {
   const container = document.getElementById('review');
   container.innerHTML = '';
@@ -588,6 +621,7 @@ function renderReview(decision, facts, decidingId) {
   const gateOrder = DATA.rulebook.gates.map((g) => g.id);
   const decidingGate = decidingId ? ruleMap.get(decidingId).gate : null;
   const orderedGates = decidingGate ? [decidingGate, ...gateOrder.filter((g) => g !== decidingGate)] : gateOrder;
+  const bannerAlreadyShowsReason = decision.verdict !== 'CHECKLIST_READY';
 
   for (const gateId of orderedGates) {
     const rulesInGate = decision.results.filter((r) => ruleMap.get(r.rule_id).gate === gateId);
@@ -597,7 +631,8 @@ function renderReview(decision, facts, decidingId) {
     const group = el('div', 'gate-group');
     group.appendChild(el('div', 'gate-label', gateLabel[gateId] || gateId));
     for (const result of applicable) {
-      group.appendChild(renderRuleRow(ruleMap.get(result.rule_id), result, result.rule_id === decidingId, facts));
+      const isDeciding = result.rule_id === decidingId;
+      group.appendChild(renderRuleRow(ruleMap.get(result.rule_id), result, isDeciding, facts, isDeciding && bannerAlreadyShowsReason));
     }
     if (notApplicable.length) {
       group.appendChild(renderNotApplicableRow(gateId, notApplicable, ruleMap, facts));
@@ -654,28 +689,35 @@ function renderAudit(decision) {
   document.getElementById('audit-json').textContent = JSON.stringify(decision.audit, null, 2);
 }
 
-function renderError(err) {
+function renderError() {
   const container = document.getElementById('finding');
   container.innerHTML = '';
   container.appendChild(el('p', 'verdict-label escalate', 'CANNOT EVALUATE'));
   container.appendChild(
-    el('h1', null, 'This combination of facts cannot be evaluated.')
+    el('h1', null, 'Something went wrong loading this scenario.')
   );
-  container.appendChild(el('p', 'explanation', err.message));
+  container.appendChild(el('p', 'explanation', 'Reload the page to try again.'));
   document.getElementById('review').innerHTML = '';
   document.getElementById('notes-section').innerHTML = '';
   document.getElementById('checklist').innerHTML = '';
+  updateStickyBar('CANNOT EVALUATE', false);
+}
+
+function renderResetFacts() {
+  const hasOverrides = Object.keys(state.extraOverrides).length > 0;
+  document.getElementById('reset-facts').hidden = !hasOverrides;
 }
 
 function render() {
   renderHeader();
+  renderResetFacts();
   let facts;
   let decision;
   try {
     facts = currentFacts();
     decision = Engine.evaluate(facts, DATA.rulebook, DATA.calendar);
-  } catch (err) {
-    renderError(err);
+  } catch {
+    renderError();
     return;
   }
   const decidingId = decidingRuleId(decision);
@@ -716,9 +758,16 @@ function renderScenarioList(filter) {
   }
 }
 
-function openPicker() {
+let pickerTrigger = null;
+
+function getFocusable(container) {
+  return Array.from(container.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+}
+
+function openPicker(triggerEl) {
+  pickerTrigger = triggerEl || document.activeElement;
   document.getElementById('scenario-picker').hidden = false;
-  document.getElementById('scenario-chip').setAttribute('aria-expanded', 'true');
+  document.getElementById('change-link').setAttribute('aria-expanded', 'true');
   document.getElementById('scenario-search').value = '';
   renderScenarioList('');
   document.getElementById('scenario-search').focus();
@@ -726,7 +775,29 @@ function openPicker() {
 
 function closePicker() {
   document.getElementById('scenario-picker').hidden = true;
-  document.getElementById('scenario-chip').setAttribute('aria-expanded', 'false');
+  document.getElementById('change-link').setAttribute('aria-expanded', 'false');
+  if (pickerTrigger) pickerTrigger.focus();
+  pickerTrigger = null;
+}
+
+function handlePickerKeydown(e) {
+  if (e.key === 'Escape') {
+    closePicker();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const dialog = document.getElementById('scenario-picker');
+  const focusable = getFocusable(dialog);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 }
 
 // --- Theme --------------------------------------------------------------
@@ -1059,12 +1130,14 @@ function renderScorecard(results) {
 // --- Wiring ---------------------------------------------------------------
 
 function wireEvents() {
-  document.getElementById('scenario-chip').addEventListener('click', openPicker);
-  document.getElementById('change-link').addEventListener('click', openPicker);
+  document.getElementById('change-link').addEventListener('click', (e) => openPicker(e.currentTarget));
   document.getElementById('picker-close').addEventListener('click', closePicker);
   document.getElementById('scenario-search').addEventListener('input', (e) => renderScenarioList(e.target.value));
-  document.getElementById('scenario-picker').addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closePicker();
+  document.getElementById('scenario-picker').addEventListener('keydown', handlePickerKeydown);
+
+  document.getElementById('reset-facts-btn').addEventListener('click', () => {
+    state.extraOverrides = {};
+    render();
   });
 
   document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
@@ -1093,6 +1166,7 @@ function wireEvents() {
 async function init() {
   initTheme();
   wireEvents();
+  initStickyBar();
   await loadData();
   render();
 }

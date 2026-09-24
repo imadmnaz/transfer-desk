@@ -5,24 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Transfer Desk</title>
 <meta name="description" content="Clears SPV secondary transfers against every document that governs them.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<div id="sticky-bar" class="sticky-bar" hidden aria-hidden="true">
+  <span id="sticky-verdict"></span>
+</div>
 <main class="page">
 
   <header class="bar">
     <span class="wordmark">Transfer Desk</span>
-    <div class="scenario-control">
-      <button id="scenario-chip" class="scenario-chip" type="button" aria-haspopup="dialog" aria-expanded="false">
-        <span class="id" id="scenario-id">T09</span>
-        <span id="scenario-title-text">Sale to a Competitor with every consent in hand</span>
-      </button>
-      <button id="change-link" class="change-link" type="button">Change</button>
-    </div>
-    <button id="theme-toggle" class="theme-toggle" type="button">Dark</button>
+    <p class="scn">
+      <span class="id" id="scenario-id">T09</span> ·
+      <span id="scenario-title-text">Competitor buyer</span>
+      <button id="change-link" class="change-link" type="button" aria-haspopup="dialog" aria-expanded="false">Change</button>
+    </p>
   </header>
 
   <p class="tag">Synthetic documents. Not legal advice.</p>
+  <p id="reset-facts" class="reset-facts" hidden>
+    <button id="reset-facts-btn" type="button">Reset facts</button>
+  </p>
 
   <dl id="register" class="register"></dl>
 
@@ -43,6 +49,7 @@
   </section>
 
   <footer class="footer">
+    <button id="theme-toggle" class="theme-toggle" type="button">Dark</button>
     <button id="run-tests" class="run-tests" type="button">Run all tests</button>
     <div id="scorecard" class="scorecard" hidden></div>
   </footer>

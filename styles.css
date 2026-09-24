@@ -1,5 +1,7 @@
-/* Pass A: structural styling only. A dedicated design pass replaces this
-   file against design-ref/reference.html; nothing here is final. */
+/* Transfer Desk demo page styles. Calm, exact and quiet: IBM Plex Sans for
+   text, IBM Plex Mono for citations only, hairline rules, no cards, no
+   tinted panels, no colour beyond the word BLOCKED. Matches
+   design-ref/reference.html for tokens and type. */
 
 :root {
   --canvas: #ffffff;
@@ -9,6 +11,8 @@
   --link: #14284b;
   --blocked: #9b2c2c;
   --escalate: #8a5a00;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
   color-scheme: light;
 }
 
@@ -49,7 +53,7 @@ body {
   margin: 0;
   background: var(--canvas);
   color: var(--text);
-  font: 400 16px/24px system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 400 16px/24px var(--sans);
   font-variant-numeric: tabular-nums;
 }
 
@@ -63,7 +67,7 @@ input {
 button {
   background: none;
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: 0;
   cursor: pointer;
   min-height: 44px;
   padding: 8px 12px;
@@ -79,9 +83,36 @@ a {
 }
 
 .page {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0 auto;
   padding: 0 20px 64px;
+}
+
+/* sticky verdict bar */
+
+.sticky-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--rule);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  z-index: 30;
+}
+
+.sticky-bar[hidden] {
+  display: none;
+}
+
+.sticky-bar.blocked #sticky-verdict {
+  color: var(--blocked);
 }
 
 /* header */
@@ -91,7 +122,7 @@ a {
   flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 16px 0;
   border-bottom: 1px solid var(--rule);
 }
@@ -99,41 +130,56 @@ a {
 .wordmark {
   font-weight: 600;
   font-size: 16px;
+  white-space: nowrap;
 }
 
-.scenario-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 200px;
-}
-
-.scenario-chip {
+.scn {
+  margin: 0;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 20px;
   white-space: nowrap;
-  overflow: hidden;
 }
 
-.scenario-chip span:not(.id) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.scenario-chip .id {
-  font-family: ui-monospace, monospace;
+.scn .id {
+  font-family: var(--mono);
   font-size: 12px;
   color: var(--muted);
-  flex-shrink: 0;
+}
+
+.change-link {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 14px;
 }
 
 .tag {
   font-size: 13px;
   color: var(--muted);
   margin: 12px 0 0;
+}
+
+.reset-facts {
+  margin: 8px 0 0;
+}
+
+.reset-facts button {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 13px;
 }
 
 /* register */
@@ -214,7 +260,7 @@ a {
 }
 
 .cite {
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 12px;
 }
 
@@ -269,18 +315,16 @@ a {
   white-space: nowrap;
 }
 
-.rule-row .row-toggle .state.blocked {
-  color: var(--blocked);
-  font-weight: 600;
-}
-
-.rule-row .row-toggle .state.escalate {
-  color: var(--escalate);
+.rule-row .row-toggle .state.nonmet {
   font-weight: 600;
 }
 
 .rule-row.deciding {
-  background: color-mix(in srgb, var(--link) 6%, transparent);
+  border-top: 2px solid var(--text);
+}
+
+.rule-row.deciding .row-toggle {
+  padding-top: 14px;
 }
 
 .rule-detail {
@@ -337,7 +381,7 @@ a {
 
 .fact-control input {
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 8px;
   background: var(--canvas);
   color: var(--text);
@@ -356,7 +400,7 @@ a {
   min-height: 44px;
   padding: 0 16px;
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: 0;
   font-size: 14px;
   font-weight: 500;
   background: var(--canvas);
@@ -427,8 +471,8 @@ a {
   margin-top: 12px;
   padding: 12px;
   border: 1px solid var(--rule);
-  border-radius: 6px;
-  font-family: ui-monospace, monospace;
+  border-radius: 0;
+  font-family: var(--mono);
   font-size: 12px;
   overflow: auto;
   max-height: 320px;
@@ -441,6 +485,24 @@ a {
   margin-top: 40px;
   padding-top: 20px;
   border-top: 1px solid var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.footer .scorecard {
+  flex-basis: 100%;
+}
+
+.theme-toggle {
+  border: 0;
+  padding: 0;
+  min-height: 44px;
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 13px;
 }
 
 .scorecard {
@@ -495,7 +557,7 @@ a {
   min-height: 44px;
   padding: 8px 12px;
   border: 1px solid var(--rule);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--canvas);
   color: var(--text);
   font-size: 16px;
@@ -521,7 +583,7 @@ a {
 }
 
 .scenario-list li button .id {
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: 12px;
   color: var(--muted);
   flex-shrink: 0;
