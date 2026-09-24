@@ -285,8 +285,8 @@ Calm, exact and quiet, like Stripe's documentation or Linear. Typography and whi
 ### Layout, mobile first (single column, max width 720px on desktop)
 
 1. **Header**: "Transfer Desk" and a one-line subtitle: "Clears SPV secondary transfers against every document that governs them." Small "Synthetic documents · not legal advice" tag.
-2. **Scenario picker**: a horizontal scrolling row of chips (T01 to T31), plus "Custom".
-3. **Request card**: seller → buyer, interest, proposed completion date, as-of date.
+2. **Scenario picker**: chips show a short plain-English name, never a bare ID (the ID sits beside it in small mono). Six featured chips: Clean transfer (T01), Competitor buyer (T09), ROFR still running (T10), Half-exercised ROFR (T13), Harbour deemed consent (T21), Override attempted (T28). Then an "All 31" chip that opens a searchable list (bottom sheet on mobile, popover on desktop), and "Custom" last. The page opens on T09, because it makes the core point in one screen: the fund gate is clean and the company gate blocks.
+3. **Request card**: seller → buyer, interest, proposed completion date, as-of date. Below 600px it collapses to one line (seller → buyer · amount · completion date) and expands on tap.
 4. **Verdict banner**: the verdict in large type and the one-sentence headline. Never show the bare words "Checklist ready", because a reader takes them to mean ready to close. When the verdict is CHECKLIST_READY with outstanding actions, the banner reads **"N actions outstanding"** with the subline "Nothing blocks this transfer, but these steps must be completed before the GP can record it." When there are none, it reads **"Ready for the GP to record"** with the subline "Every condition is evidenced. Recording in the Register (LPA 8.5) is a human decision."
 5. **Four gates as a vertical stepper**: Fund, Side letter, Company, Buyer and regulatory. Each rule row shows a state pill, the plain-English reason and a citation in mono. Tapping the citation expands the exact clause text from `clauses.json` inline, with a quiet "View in document, p. N" link that opens the PDF at that page (`docs/source/<file>.pdf#page=N`) in a new tab.
 6. **Evidence toggles**: under each gate, the relevant facts as segmented controls. Changing one re-runs the engine instantly and animates only the verdict change (150ms fade).
@@ -301,6 +301,41 @@ Calm, exact and quiet, like Stripe's documentation or Linear. Typography and whi
 - No layout shift when the verdict changes.
 - Loads from GitHub Pages with no console errors.
 
+### Typography and hierarchy
+
+- Type scale uses only 12, 14, 16, 20, 28 and 40px. Body text is 16px, including form controls, so iOS never zooms. Line height 1.5 for body, 1.15 for headlines.
+- Three weights only: 400, 500, 600. The verdict headline is 28px on mobile and 40px on desktop, weight 600, letter spacing -0.02em.
+- One accent colour. State pills are a small coloured dot plus text, not saturated filled blocks.
+- Pill labels are plain English: Met, Outstanding, Fails, Unknown, Conflicting, Not applicable. Engine state names appear only in the audit JSON.
+- Within each gate, NOT_APPLICABLE rules collapse into one muted line ("2 rules not applicable") that expands on tap.
+- Dates in the UI read "Mon 26 Oct 2026" in tabular figures; ISO dates appear only in the audit JSON. Where the engine computes a date, show the working in small muted text beneath it (for example "20 Business Days from receipt on Fri 25 Sep; skips Mon 12 Oct holiday").
+
+### Mobile specifics
+
+- On a 375px screen the first viewport shows the header, the picker and the verdict banner without scrolling.
+- Once the verdict banner scrolls out of view, a compact sticky bar (44px, verdict word and action count) appears at the top, so the reader never loses the answer while reading the gates. Use IntersectionObserver.
+- The chip row uses scroll snap and a fade on the right edge so it is obvious that it scrolls.
+- Use `100dvh`, respect safe-area insets, and give nothing a hover-only affordance.
+- The audit JSON block may scroll inside itself; the page never scrolls horizontally.
+
+### Details that signal care
+
+- `prefers-reduced-motion` turns off the fade.
+- Favicon: a simple navy monogram SVG. A proper `<title>`, meta description and Open Graph tags with a 1200×630 preview image made from a real screenshot, so the link looks finished when pasted into an email or LinkedIn.
+- The theme toggle remembers the choice in localStorage, wrapped in try/catch.
+- No lorem, TODO or placeholder text anywhere.
+
+### Avoid (these read as a template)
+
+Cards inside cards. More than one border style. Icons beside every heading. Emoji. Gradients. Glass effects. Coloured section backgrounds. All-caps labels. Centred body text. Default blue links. Badges on everything. Marketing copy.
+
+### Design process for phase 4
+
+1. Build a static version first from the computed T09 decision, before any interactivity. Stop and show screenshots.
+2. Take screenshots with Playwright run through npx, without adding it to the repo (the repo stays dependency free). Capture 375×812 and 1280×800, light and dark, for T09, T10, T13 and T01, plus one with a clause expanded and one with the scorecard open. Save them to `screens/` (gitignored) with names like `t09-375-light.png`.
+3. Before showing me anything, review your own screenshots against this section and fix what you find. At least two rounds.
+4. Confirm no horizontal scroll at 320, 375 and 390px, and check every text and background pair against WCAG AA in both themes. Report the results.
+
 ## 9. Build phases
 
 Commit at the end of each phase with a clear message. Run `node --test` before every commit.
@@ -308,7 +343,7 @@ Commit at the end of each phase with a clear message. Run `node --test` before e
 1. **Data.** `clauses.json` from the Markdown source documents (exact text, keyed by doc and section, with the PDF page from `page-index.json`), `rulebook.json`, `calendar.json`, `base-facts.json`, `scenarios.json`. Stop and let me review before phase 2.
 2. **Engine and tests.** `dates.js`, `engine.js`, `engine.test.js` including the unsafe-clears test. All 31 scenarios passing. Stop for review.
 3. **Held-out.** I will paste external adversarial cases into `heldout.json`. Run them, report results, do not edit them.
-4. **Demo page.** Build to section 8. Stop for review with screenshots at 375px in light and dark.
+4. **Demo page.** Build to section 8, following its design process. Stop for review after the static version, and again once it is interactive.
 5. **README, NOTE.md and REVIEW-LOG.md.** Then enable GitHub Pages.
 
 ## 10. README outline

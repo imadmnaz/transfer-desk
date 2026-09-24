@@ -1,0 +1,423 @@
+[
+  {
+    "id": "T01",
+    "title": "Clean full transfer",
+    "overrides": {},
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "no_outstanding": true,
+      "checklist_last_contains": "LPA 8.5"
+    }
+  },
+  {
+    "id": "T02",
+    "title": "Company consent not yet requested",
+    "overrides": { "company": { "consent": { "status": "not_requested" } } },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "C-CONSENT": "OUTSTANDING" }
+    }
+  },
+  {
+    "id": "T03",
+    "title": "Company consent refused",
+    "overrides": { "company": { "consent": { "status": "refused" } } },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-CONSENT": "FAILED" }
+    }
+  },
+  {
+    "id": "T04",
+    "title": "GP consent refused",
+    "overrides": { "fund": { "gp_consent": { "status": "refused" } } },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "F-CONSENT": "FAILED" }
+    }
+  },
+  {
+    "id": "T05",
+    "title": "Company consent only \"agreed on a call\"",
+    "overrides": { "company": { "consent": { "status": "unknown" } } },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "C-CONSENT": "UNKNOWN" }
+    }
+  },
+  {
+    "id": "T06",
+    "title": "Company silent for two months",
+    "overrides": { "company": { "consent": { "status": "requested", "requested_at": "2026-08-03T10:00" } } },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "C-CONSENT": "OUTSTANDING" },
+      "reason_includes": { "C-CONSENT": "SA 3.4" }
+    }
+  },
+  {
+    "id": "T07",
+    "title": "Permitted transfer to transferor's affiliate",
+    "overrides": {
+      "transfer": { "transferee": "Aldwych Angels II Ltd", "transferee_relationship": "affiliate" },
+      "fund": {
+        "gp_consent": { "status": "not_requested" },
+        "gp_permitted_notice": { "status": "delivered", "sent_at": "2026-09-15T10:00" }
+      },
+      "company": {
+        "consent": { "status": "not_requested" },
+        "permitted_notice": { "status": "delivered", "sent_at": "2026-09-15T10:00" },
+        "rofr_notice": { "status": "not_sent" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-CONSENT": "NOT_APPLICABLE",
+        "C-CONSENT": "NOT_APPLICABLE",
+        "C-ROFR-NOTICE": "NOT_APPLICABLE",
+        "F-PERMITTED-NOTICE": "SATISFIED",
+        "C-PERMITTED-NOTICE": "SATISFIED"
+      },
+      "dates": {
+        "F-PERMITTED-NOTICE.earliest_completion": "2026-09-23",
+        "C-PERMITTED-NOTICE.earliest_completion": "2026-09-30"
+      }
+    }
+  },
+  {
+    "id": "T08",
+    "title": "Permitted transfer, company notice too late",
+    "overrides": {
+      "transfer": { "transferee": "Aldwych Angels II Ltd", "transferee_relationship": "affiliate", "proposed_completion": "2026-10-02" },
+      "fund": {
+        "gp_consent": { "status": "not_requested" },
+        "gp_permitted_notice": { "status": "delivered", "sent_at": "2026-09-15T10:00" }
+      },
+      "company": {
+        "consent": { "status": "not_requested" },
+        "permitted_notice": { "status": "delivered", "sent_at": "2026-09-28T11:00" },
+        "rofr_notice": { "status": "not_sent" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-PERMITTED-NOTICE": "FAILED" },
+      "dates": { "C-PERMITTED-NOTICE.cure_date": "2026-10-14" }
+    }
+  },
+  {
+    "id": "T09",
+    "title": "Sale to a Competitor with every consent in hand",
+    "overrides": { "transfer": { "transferee": "Kestrel Automation Ltd", "transferee_is_competitor": "yes" } },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-COMPETITOR": "FAILED", "C-CONSENT": "SATISFIED" }
+    }
+  },
+  {
+    "id": "T10",
+    "title": "ROFR period still running",
+    "overrides": {
+      "company": {
+        "rofr_notice": { "status": "delivered", "sent_at": "2026-09-25T10:00", "complete": "yes", "proof_of_delivery": "yes" },
+        "rofr_response": { "status": "none" }
+      },
+      "transfer": { "proposed_completion": "2026-11-02" }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "C-ROFR-RESPONSE": "OUTSTANDING" },
+      "dates": { "C-ROFR-RESPONSE.expiry": "2026-10-26" }
+    }
+  },
+  {
+    "id": "T11",
+    "title": "ROFR notice sent, no proof of delivery",
+    "overrides": {
+      "company": {
+        "rofr_notice": { "status": "sent_no_proof", "sent_at": "2026-08-20T10:00", "complete": "yes", "proof_of_delivery": "no" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "C-ROFR-NOTICE": "UNKNOWN" }
+    }
+  },
+  {
+    "id": "T12",
+    "title": "ROFR notice sent after 5pm on a Friday",
+    "overrides": {
+      "company": {
+        "rofr_notice": { "status": "delivered", "sent_at": "2026-09-25T18:30", "complete": "yes", "proof_of_delivery": "yes" },
+        "rofr_response": { "status": "none" }
+      },
+      "transfer": { "proposed_completion": "2026-11-02" }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "dates": {
+        "C-ROFR-NOTICE.receipt": "2026-09-28",
+        "C-ROFR-RESPONSE.expiry": "2026-10-27"
+      }
+    }
+  },
+  {
+    "id": "T13",
+    "title": "Company purports to exercise ROFR over half",
+    "overrides": { "company": { "rofr_response": { "status": "exercised_partial" } } },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "C-ROFR-RESPONSE": "UNKNOWN" },
+      "reason_includes": { "C-ROFR-RESPONSE": "SA 4.3" }
+    }
+  },
+  {
+    "id": "T14",
+    "title": "Company exercises ROFR in whole",
+    "overrides": { "company": { "rofr_response": { "status": "exercised_whole" } } },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-ROFR-RESPONSE": "FAILED" }
+    }
+  },
+  {
+    "id": "T15",
+    "title": "ROFR waived, consent not sought",
+    "overrides": { "company": { "consent": { "status": "not_requested" } } },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "C-CONSENT": "OUTSTANDING" },
+      "notes_include": ["SA 4.6"]
+    }
+  },
+  {
+    "id": "T16",
+    "title": "Consent received, no Transfer Notice",
+    "overrides": {
+      "company": {
+        "rofr_notice": { "status": "not_sent" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "C-ROFR-NOTICE": "OUTSTANDING" },
+      "notes_include": ["SA 4.6"]
+    }
+  },
+  {
+    "id": "T17",
+    "title": "Contradictory consent evidence (approval 20 Sep, refusal 22 Sep)",
+    "overrides": { "company": { "consent": { "status": "contradictory" } } },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "C-CONSENT": "CONTRADICTORY" }
+    }
+  },
+  {
+    "id": "T18",
+    "title": "Completion outside the post-ROFR window",
+    "overrides": {
+      "company": {
+        "rofr_notice": { "status": "delivered", "sent_at": "2026-06-01T10:00", "complete": "yes", "proof_of_delivery": "yes" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-ROFR-WINDOW": "FAILED" },
+      "dates": {
+        "C-ROFR-RESPONSE.expiry": "2026-06-30",
+        "C-ROFR-WINDOW.window_end": "2026-09-01"
+      }
+    }
+  },
+  {
+    "id": "T19",
+    "title": "Harbour to a fund managed by its adviser",
+    "overrides": {
+      "transfer": {
+        "transferor": "Harbour Family Office LLC",
+        "transferee": "Harbour Growth Fund II LP",
+        "transferee_relationship": "harbour_transferee"
+      },
+      "fund": { "gp_consent": { "status": "not_requested" } },
+      "company": {
+        "consent": { "status": "not_requested" },
+        "rofr_notice": { "status": "not_sent" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-CONSENT": "NOT_APPLICABLE",
+        "C-CONSENT": "OUTSTANDING",
+        "C-ROFR-NOTICE": "OUTSTANDING"
+      }
+    }
+  },
+  {
+    "id": "T20",
+    "title": "Non-Harbour LP relying on Harbour's deemed consent",
+    "overrides": {
+      "transfer": { "transferor": "Priya Nair" },
+      "fund": {
+        "claimed_side_letter": "harbour",
+        "gp_consent": { "status": "requested", "requested_at": "2026-09-10T10:00" }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "F-CONSENT": "OUTSTANDING" },
+      "notes_include": ["side letter rights are personal to Harbour"]
+    }
+  },
+  {
+    "id": "T21",
+    "title": "Harbour, GP silent past 10 Business Days",
+    "overrides": {
+      "transfer": { "transferor": "Harbour Family Office LLC" },
+      "fund": {
+        "gp_consent": { "status": "requested", "requested_at": "2026-09-10T10:00", "complete": "yes" }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "F-CONSENT": "SATISFIED" },
+      "dates": { "S-DEEMED-CONSENT.deemed_at": "2026-09-24" }
+    }
+  },
+  {
+    "id": "T22",
+    "title": "Partial transfer below minimum holding",
+    "overrides": {
+      "transfer": { "transferor": "Priya Nair", "transferor_capital_contribution": 15000, "fraction": 0.6 }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "F-MIN-HOLDING": "FAILED" }
+    }
+  },
+  {
+    "id": "T23",
+    "title": "Partial transfer breaches beneficial-owner limit",
+    "overrides": {
+      "transfer": { "transferor": "Priya Nair", "transferor_capital_contribution": 50000, "fraction": 0.5 },
+      "fund": { "beneficial_owners_current": 95 }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "F-BO-LIMIT": "FAILED" }
+    }
+  },
+  {
+    "id": "T24",
+    "title": "Beneficial-owner count unknown",
+    "overrides": { "fund": { "beneficial_owners_current": null } },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "F-BO-LIMIT": "UNKNOWN" }
+    }
+  },
+  {
+    "id": "T25",
+    "title": "Sanctions screening hit",
+    "overrides": { "buyer": { "sanctions": "hit" } },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "B-SANCTIONS": "FAILED" }
+    }
+  },
+  {
+    "id": "T26",
+    "title": "Pledge treated as \"not a transfer\"",
+    "overrides": {
+      "transfer": { "kind": "pledge", "operator_classification": "not_a_transfer", "transferee": "Cobalt Lending Ltd" },
+      "fund": { "gp_consent": { "status": "not_requested" } },
+      "company": {
+        "consent": { "status": "not_requested" },
+        "rofr_notice": { "status": "not_sent" },
+        "rofr_response": { "status": "none" }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-CONSENT": "OUTSTANDING",
+        "C-CONSENT": "OUTSTANDING",
+        "C-ROFR-NOTICE": "NOT_APPLICABLE",
+        "B-ADHERENCE": "NOT_APPLICABLE",
+        "B-TAX-FORM": "NOT_APPLICABLE",
+        "B-ACCREDITED": "NOT_APPLICABLE",
+        "F-BO-LIMIT": "NOT_APPLICABLE"
+      },
+      "notes_include": ["classification is rejected"]
+    }
+  },
+  {
+    "id": "T27",
+    "title": "Evidence prepared against a superseded LPA",
+    "overrides": { "documents_version_confirmed": "no" },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "X-VERSION": "UNKNOWN" }
+    }
+  },
+  {
+    "id": "T28",
+    "title": "Operator overrides a refusal",
+    "overrides": {
+      "company": { "consent": { "status": "refused" } },
+      "override": { "by": "ops.user2", "reason": "urgent close" }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-CONSENT": "FAILED" },
+      "audit": { "override.accepted": false }
+    }
+  },
+  {
+    "id": "T29",
+    "title": "KYC still pending",
+    "overrides": { "buyer": { "kyc": "pending" } },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": { "B-KYC": "OUTSTANDING" }
+    }
+  },
+  {
+    "id": "T30",
+    "title": "Completion scheduled inside a running ROFR period",
+    "overrides": {
+      "company": {
+        "rofr_notice": { "status": "delivered", "sent_at": "2026-09-25T10:00", "complete": "yes", "proof_of_delivery": "yes" },
+        "rofr_response": { "status": "none" }
+      },
+      "transfer": { "proposed_completion": "2026-10-05" }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": { "C-ROFR-RESPONSE": "FAILED" },
+      "cure_includes": { "C-ROFR-RESPONSE": "2026-10-26" }
+    }
+  },
+  {
+    "id": "T31",
+    "title": "Harbour, GP silent, but the request may have been incomplete",
+    "overrides": {
+      "transfer": { "transferor": "Harbour Family Office LLC" },
+      "fund": {
+        "gp_consent": { "status": "requested", "requested_at": "2026-09-10T10:00", "complete": "unknown" }
+      }
+    },
+    "expect": {
+      "verdict": "ESCALATE",
+      "rule_states": { "F-CONSENT": "UNKNOWN" }
+    }
+  }
+]

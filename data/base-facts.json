@@ -1,0 +1,36 @@
+{
+  "as_of": "2026-10-01",
+  "documents_version_confirmed": "yes",
+  "transfer": {
+    "kind": "sale",
+    "operator_classification": "transfer",
+    "transferor": "Aldwych Angels Ltd",
+    "transferor_capital_contribution": 50000,
+    "fraction": 1.0,
+    "transferee": "Mira Chen",
+    "transferee_relationship": "unrelated",
+    "transferee_existing_lp": false,
+    "transferee_is_competitor": "no",
+    "proposed_completion": "2026-10-05"
+  },
+  "fund": {
+    "gp_consent": { "status": "received", "received_at": "2026-08-24T11:00" },
+    "gp_permitted_notice": { "status": "not_applicable" },
+    "beneficial_owners_current": 80,
+    "claimed_side_letter": null
+  },
+  "company": {
+    "consent": { "status": "received", "received_at": "2026-09-02T15:00" },
+    "permitted_notice": { "status": "not_applicable" },
+    "rofr_notice": { "status": "delivered", "sent_at": "2026-08-20T10:00", "complete": "yes", "proof_of_delivery": "yes" },
+    "rofr_response": { "status": "waived", "at": "2026-08-27" }
+  },
+  "buyer": {
+    "kyc": "cleared",
+    "sanctions": "clear",
+    "accredited": "confirmed",
+    "tax_form": "received",
+    "adherence": "signed"
+  },
+  "override": null
+}
