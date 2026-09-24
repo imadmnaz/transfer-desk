@@ -205,7 +205,10 @@ function evaluate(facts, rulebook, calendar) {
         const receipt = dates.receivedDate(gpConsent.requested_at, calendar);
         const deemed = dates.addBusinessDays(receipt.date, 10, calendar);
         const working = dates.businessDaysWorking(receipt.date, 10, deemed, 'from receipt');
-        const computed = { deemed_at: { date: deemed.date, working } };
+        const computed = {
+          receipt: { date: receipt.date, working: receipt.working },
+          deemed_at: { date: deemed.date, working },
+        };
         if (facts.as_of > deemed.date) {
           const reason = `The General Partner did not respond within ten Business Days of receipt of a complete request, so its consent is deemed given as of the end of ${dates.formatReadable(deemed.date)}.`;
           deemedConsentOutcome = { state: 'SATISFIED', reason, computed };
@@ -261,7 +264,10 @@ function evaluate(facts, rulebook, calendar) {
         const receipt = dates.receivedDate(notice.sent_at, calendar);
         const earliest = dates.addBusinessDays(receipt.date, clearDays + 1, calendar);
         const working = dates.businessDaysWorking(receipt.date, clearDays + 1, earliest, 'after receipt');
-        const computed = { earliest_completion: { date: earliest.date, working } };
+        const computed = {
+          receipt: { date: receipt.date, working: receipt.working },
+          earliest_completion: { date: earliest.date, working },
+        };
         if (t.proposed_completion >= earliest.date) {
           mk(
             ruleId,
@@ -561,7 +567,16 @@ function evaluate(facts, rulebook, calendar) {
     } else {
       const windowEnd = dates.addBusinessDays(referenceDate, 45, calendar);
       const working = dates.businessDaysWorking(referenceDate, 45, windowEnd, 'from the end of the exercise period or waiver');
-      const computed = { window_end: { date: windowEnd.date, working } };
+      const windowStartWorking =
+        resp.status === 'waived'
+          ? rofrExpiry !== null && rofrExpiry < resp.at
+            ? `The exercise period ended ${dates.formatReadable(rofrExpiry)}, before the waiver on ${dates.formatReadable(resp.at)}, so the window runs from the earlier date.`
+            : `The Company waived its right of first refusal on ${dates.formatReadable(resp.at)}.`
+          : `The exercise period ended ${dates.formatReadable(rofrExpiry)} without exercise.`;
+      const computed = {
+        window_start: { date: referenceDate, working: windowStartWorking },
+        window_end: { date: windowEnd.date, working },
+      };
       if (t.proposed_completion > windowEnd.date) {
         mk(
           'C-ROFR-WINDOW',

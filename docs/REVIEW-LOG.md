@@ -46,3 +46,12 @@ Every review of this project is recorded here: what was found, what I decided, a
 | # | Finding | Decision | Change made |
 |---|---|---|---|
 | 1 | Found in engine review: a recorded exercise of the right of first refusal was ignored when the Transfer Notice was not evidenced, producing an unsafe clear. Fixed, with four regression tests. | Accepted | C-ROFR-RESPONSE now evaluates `exercised_whole`, `exercised_partial`, `unknown` and `waived` on their own terms whenever the right of first refusal applies at all (not only once the Transfer Notice is SATISFIED); only `none` still depends on the notice. A `delivered` notice with `complete: "no"` is now C-ROFR-NOTICE OUTSTANDING, not UNKNOWN, since it is a known gap with a clear cure. C-ROFR-WINDOW now applies whenever there is a waiver, using the waiver date, or the earlier of the waiver and the expiry where the expiry is known, even without a satisfied notice. None of the 31 scenarios changed outcome. |
+
+## Round 4: held-out cases
+
+**Reviewer:** cross-model review. The cases were written blind, from the documents and conventions alone.
+**Scope:** ten adversarial cases (`data/heldout.json`) probing 17:00 and holiday receipt boundaries, exact minimum-holding and beneficial-owner-limit arithmetic, an Affiliate of a listed Competitor, and exercise-period and completion-window edge days.
+
+Held-out cases H01 to H10, written independently by a second model from the documents and conventions, without access to the engine. Results: 10/10 verdicts, 10/10 fully matched including dates.
+
+A field-name alias table in `tests/engine.test.js` (`HELD_OUT_DATE_FIELD_ALIASES`) translates the held-out cases' date field names (for example `receipt_date`, `deemed_date`) to the engine's own (`receipt`, `deemed_at`) before comparison; no expected value in `data/heldout.json` was changed.

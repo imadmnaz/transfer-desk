@@ -1,0 +1,347 @@
+[
+  {
+    "id": "H01",
+    "title": "Permitted notices sent at exactly 17:00",
+    "overrides": {
+      "as_of": "2026-10-14",
+      "transfer": {
+        "transferee": "Aldwych Angels II Ltd",
+        "transferee_relationship": "affiliate",
+        "proposed_completion": "2026-10-14"
+      },
+      "fund": {
+        "gp_permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-09-25T17:00",
+          "proof_of_delivery": "yes"
+        }
+      },
+      "company": {
+        "permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-09-25T17:00",
+          "proof_of_delivery": "yes"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-PERMITTED-NOTICE": "SATISFIED",
+        "C-PERMITTED-NOTICE": "SATISFIED"
+      },
+      "dates": {
+        "F-PERMITTED-NOTICE.receipt_date": "2026-09-28",
+        "F-PERMITTED-NOTICE.earliest_permitted_completion": "2026-10-06",
+        "C-PERMITTED-NOTICE.receipt_date": "2026-09-28",
+        "C-PERMITTED-NOTICE.earliest_permitted_completion": "2026-10-14"
+      }
+    },
+    "working": "Both notices were sent Friday 2026-09-25 at exactly 17:00 New York time. The receipt rule applies only before 17:00, so neither was received that day. Saturday 2026-09-26 and Sunday 2026-09-27 are not Business Days; receipt is Monday 2026-09-28. For the GP's six-Business-Day earliest completion: Tue Sep 29 = 1, Wed Sep 30 = 2, Thu Oct 1 = 3, Fri Oct 2 = 4, Mon Oct 5 = 5, Tue Oct 6 = 6. For the Company's eleven-Business-Day earliest completion: Sep 29 = 1, Sep 30 = 2, Oct 1 = 3, Oct 2 = 4, Oct 5 = 5, Oct 6 = 6, Oct 7 = 7, Oct 8 = 8, Oct 9 = 9, Mon Oct 12 is a listed holiday and is skipped, Tue Oct 13 = 10, Wed Oct 14 = 11. Completion on Oct 14 meets both notice periods. The affiliate relationship makes the sale a permitted transfer under both documents; the other baseline conditions remain satisfied."
+  },
+  {
+    "id": "H02",
+    "title": "Permitted notices sent on a holiday",
+    "overrides": {
+      "as_of": "2026-10-28",
+      "transfer": {
+        "transferee": "Aldwych Angels II Ltd",
+        "transferee_relationship": "affiliate",
+        "proposed_completion": "2026-10-28"
+      },
+      "fund": {
+        "gp_permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-10-12T10:00",
+          "proof_of_delivery": "yes"
+        }
+      },
+      "company": {
+        "permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-10-12T10:00",
+          "proof_of_delivery": "yes"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-PERMITTED-NOTICE": "SATISFIED",
+        "C-PERMITTED-NOTICE": "SATISFIED"
+      },
+      "dates": {
+        "F-PERMITTED-NOTICE.receipt_date": "2026-10-13",
+        "F-PERMITTED-NOTICE.earliest_permitted_completion": "2026-10-21",
+        "C-PERMITTED-NOTICE.receipt_date": "2026-10-13",
+        "C-PERMITTED-NOTICE.earliest_permitted_completion": "2026-10-28"
+      }
+    },
+    "working": "The notices were sent Monday 2026-10-12, a listed holiday, so receipt is the next Business Day, Tuesday 2026-10-13. For the GP's six Business Days strictly after receipt: Oct 14 = 1, Oct 15 = 2, Oct 16 = 3, Oct 19 = 4, Oct 20 = 5, Oct 21 = 6. For the Company's eleven Business Days strictly after receipt: Oct 14 = 1, Oct 15 = 2, Oct 16 = 3, Oct 19 = 4, Oct 20 = 5, Oct 21 = 6, Oct 22 = 7, Oct 23 = 8, Oct 26 = 9, Oct 27 = 10, Oct 28 = 11. Completion on Oct 28 is the earliest date satisfying the Company's ten clear Business Days, with the receipt and completion dates excluded. The affiliate relationship makes the sale a permitted transfer under both documents; the other baseline conditions remain satisfied."
+  },
+  {
+    "id": "H03",
+    "title": "Existing LP reaches exactly 95 owners with minimum holdings",
+    "overrides": {
+      "transfer": {
+        "transferor_capital_contribution": 20000,
+        "fraction": 0.5,
+        "transferee_existing_lp": true
+      },
+      "fund": {
+        "beneficial_owners_current": 95
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-MIN-HOLDING": "SATISFIED",
+        "F-BO-LIMIT": "SATISFIED"
+      },
+      "dates": {}
+    },
+    "working": "The partial transfer is 20,000 × 0.5 = US$10,000. The transferor retains US$10,000. LPA 8.3 requires each amount to be not less than US$10,000, so both meet the minimum exactly. The transferee is already a limited partner, so this transfer adds no beneficial owner; because the transferor retains part of the interest, there is no full-exit subtraction. The count immediately after the transfer is 95 + 0 − 0 = 95, which does not exceed the limit. The remaining baseline conditions are satisfied."
+  },
+  {
+    "id": "H04",
+    "title": "Affiliate of listed Competitor despite permitted-transfer notices",
+    "overrides": {
+      "as_of": "2026-09-30",
+      "transfer": {
+        "transferee": "Kestrel Affiliate Ltd",
+        "transferee_relationship": "affiliate",
+        "transferee_is_competitor": "yes",
+        "proposed_completion": "2026-09-30"
+      },
+      "fund": {
+        "gp_permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-09-15T10:00",
+          "proof_of_delivery": "yes"
+        }
+      },
+      "company": {
+        "permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-09-15T10:00",
+          "proof_of_delivery": "yes"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": {
+        "F-CONSENT": "NOT_APPLICABLE",
+        "F-PERMITTED-NOTICE": "SATISFIED",
+        "C-CONSENT": "NOT_APPLICABLE",
+        "C-PERMITTED-NOTICE": "SATISFIED",
+        "C-ROFR-NOTICE": "NOT_APPLICABLE",
+        "C-COMPETITOR": "FAILED"
+      },
+      "dates": {
+        "F-PERMITTED-NOTICE.earliest_permitted_completion": "2026-09-23",
+        "C-PERMITTED-NOTICE.earliest_permitted_completion": "2026-09-30"
+      }
+    },
+    "working": "The notices were sent Tuesday 2026-09-15 at 10:00, a Business Day before 17:00, so receipt is Sep 15. The GP's six Business Days after receipt are Sep 16 = 1, Sep 17 = 2, Sep 18 = 3, Sep 21 = 4, Sep 22 = 5, Sep 23 = 6. The Company's eleven are Sep 16 = 1, Sep 17 = 2, Sep 18 = 3, Sep 21 = 4, Sep 22 = 5, Sep 23 = 6, Sep 24 = 7, Sep 25 = 8, Sep 28 = 9, Sep 29 = 10, Sep 30 = 11. Completion meets both notice dates. An affiliate is a permitted transferee for the consent and notice rules, and the sale to a non-SA-Permitted-Transferee is not subject to the ROFR notice rule. But the facts identify the buyer as an Affiliate of Kestrel Automation Ltd, which Schedule 2 lists as a Competitor; the SA defines a Competitor to include its Affiliates. SA 3.3 bars the transfer whether or not the Company consented, so the transfer is blocked."
+  },
+  {
+    "id": "H05",
+    "title": "Harbour deemed-consent boundary after a 17:00 request",
+    "overrides": {
+      "as_of": "2026-10-13",
+      "transfer": {
+        "transferor": "Harbour Family Office LLC",
+        "proposed_completion": "2026-10-30"
+      },
+      "fund": {
+        "claimed_side_letter": "harbour",
+        "gp_consent": {
+          "status": "requested",
+          "requested_at": "2026-09-25T17:00",
+          "complete": "yes"
+        }
+      },
+      "company": {
+        "consent": {
+          "status": "requested",
+          "requested_at": "2026-09-10T10:00"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-CONSENT": "OUTSTANDING",
+        "C-CONSENT": "OUTSTANDING"
+      },
+      "dates": {
+        "F-CONSENT.receipt_date": "2026-09-28",
+        "F-CONSENT.deemed_date": "2026-10-13"
+      }
+    },
+    "working": "The complete Harbour request was sent Friday 2026-09-25 at exactly 17:00, so the GP receives it Monday 2026-09-28; the weekend does not count. Count ten Business Days strictly after receipt: Sep 29 = 1, Sep 30 = 2, Oct 1 = 3, Oct 2 = 4, Oct 5 = 5, Oct 6 = 6, Oct 7 = 7, Oct 8 = 8, Oct 9 = 9, Oct 12 is a listed holiday and is skipped, Oct 13 = 10. Deemed consent arises at the end of Oct 13, but the convention says it is satisfied only when as_of is after that date. Here as_of is Oct 13 itself, so GP consent remains outstanding. The Company's request has no deemed-consent path and remains outstanding as well. The known outstanding actions make the result checklist ready; the waived ROFR and other baseline conditions do not block the proposed Oct 30 completion."
+  },
+  {
+    "id": "H06",
+    "title": "Completion one Business Day before permitted-notice minimum",
+    "overrides": {
+      "as_of": "2026-10-27",
+      "transfer": {
+        "transferee": "Aldwych Angels II Ltd",
+        "transferee_relationship": "affiliate",
+        "proposed_completion": "2026-10-27"
+      },
+      "fund": {
+        "gp_permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-10-12T10:00",
+          "proof_of_delivery": "yes"
+        }
+      },
+      "company": {
+        "permitted_notice": {
+          "status": "delivered",
+          "sent_at": "2026-10-12T10:00",
+          "proof_of_delivery": "yes"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": {
+        "F-PERMITTED-NOTICE": "SATISFIED",
+        "C-PERMITTED-NOTICE": "FAILED"
+      },
+      "dates": {
+        "F-PERMITTED-NOTICE.earliest_permitted_completion": "2026-10-21",
+        "C-PERMITTED-NOTICE.earliest_permitted_completion": "2026-10-28",
+        "C-PERMITTED-NOTICE.cure_date": "2026-10-28"
+      }
+    },
+    "working": "The notices were sent on the Oct 12 listed holiday, so receipt is Tue Oct 13. For the GP, count after receipt: Oct 14 = 1, Oct 15 = 2, Oct 16 = 3, Oct 19 = 4, Oct 20 = 5, Oct 21 = 6; the GP notice condition is met. For the Company's eleven-Business-Day earliest completion: Oct 14 = 1, Oct 15 = 2, Oct 16 = 3, Oct 19 = 4, Oct 20 = 5, Oct 21 = 6, Oct 22 = 7, Oct 23 = 8, Oct 26 = 9, Oct 27 = 10, Oct 28 = 11. Completion on Oct 27 is only the tenth Business Day after receipt and leaves only nine full Business Days between receipt and completion when both endpoint dates are excluded. It fails the ten-clear-day notice condition; Oct 28 is the cure date. The failure blocks the transfer."
+  },
+  {
+    "id": "H07",
+    "title": "ROFR boundary day with completion after expiry",
+    "overrides": {
+      "as_of": "2026-10-26",
+      "transfer": {
+        "proposed_completion": "2026-10-27"
+      },
+      "company": {
+        "rofr_notice": {
+          "status": "delivered",
+          "sent_at": "2026-09-25T16:59",
+          "complete": "yes",
+          "proof_of_delivery": "yes"
+        },
+        "rofr_response": {
+          "status": "none"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "C-ROFR-RESPONSE": "OUTSTANDING"
+      },
+      "dates": {
+        "C-ROFR-NOTICE.receipt_date": "2026-09-25",
+        "C-ROFR-RESPONSE.expiry_date": "2026-10-26"
+      }
+    },
+    "working": "The complete notice was sent Friday 2026-09-25 at 16:59, before 17:00 on a Business Day, so receipt is Sep 25. Count twenty Business Days strictly after receipt: Mon Sep 28 = 1, Tue Sep 29 = 2, Wed Sep 30 = 3, Thu Oct 1 = 4, Fri Oct 2 = 5, Mon Oct 5 = 6, Tue Oct 6 = 7, Wed Oct 7 = 8, Thu Oct 8 = 9, Fri Oct 9 = 10, Oct 12 is a listed holiday and is skipped, Tue Oct 13 = 11, Wed Oct 14 = 12, Thu Oct 15 = 13, Fri Oct 16 = 14, Mon Oct 19 = 15, Tue Oct 20 = 16, Wed Oct 21 = 17, Thu Oct 22 = 18, Fri Oct 23 = 19, Mon Oct 26 = 20. The period ends at the end of Oct 26. Since as_of is Oct 26, the period has not yet expired under the rule that it expires only if as_of is after that date. Completion is proposed for Oct 27, after expiry, so the rule calls for waiting until expiry or obtaining a written waiver; it is outstanding, not failed. The other baseline conditions are satisfied."
+  },
+  {
+    "id": "H08",
+    "title": "Completion on the last day of the post-ROFR window",
+    "overrides": {
+      "as_of": "2026-10-01",
+      "transfer": {
+        "proposed_completion": "2026-11-02"
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "C-ROFR-RESPONSE": "SATISFIED",
+        "C-ROFR-WINDOW": "SATISFIED"
+      },
+      "dates": {
+        "C-ROFR-WINDOW.start_date": "2026-08-27",
+        "C-ROFR-WINDOW.end_date": "2026-11-02"
+      }
+    },
+    "working": "The baseline records a written waiver on Thu 2026-08-27, so the 45-Business-Day completion window runs from that waiver date. Count Business Days strictly after Aug 27: Fri Aug 28 = 1, Mon Aug 31 = 2, Tue Sep 1 = 3, Wed Sep 2 = 4, Thu Sep 3 = 5, Fri Sep 4 = 6, Sep 7 is a listed holiday and is skipped, Tue Sep 8 = 7, Wed Sep 9 = 8, Thu Sep 10 = 9, Fri Sep 11 = 10, Mon Sep 14 = 11, Tue Sep 15 = 12, Wed Sep 16 = 13, Thu Sep 17 = 14, Fri Sep 18 = 15, Mon Sep 21 = 16, Tue Sep 22 = 17, Wed Sep 23 = 18, Thu Sep 24 = 19, Fri Sep 25 = 20, Mon Sep 28 = 21, Tue Sep 29 = 22, Wed Sep 30 = 23, Thu Oct 1 = 24, Fri Oct 2 = 25, Mon Oct 5 = 26, Tue Oct 6 = 27, Wed Oct 7 = 28, Thu Oct 8 = 29, Fri Oct 9 = 30, Oct 12 is a listed holiday and is skipped, Tue Oct 13 = 31, Wed Oct 14 = 32, Thu Oct 15 = 33, Fri Oct 16 = 34, Mon Oct 19 = 35, Tue Oct 20 = 36, Wed Oct 21 = 37, Thu Oct 22 = 38, Fri Oct 23 = 39, Mon Oct 26 = 40, Tue Oct 27 = 41, Wed Oct 28 = 42, Thu Oct 29 = 43, Fri Oct 30 = 44, Mon Nov 2 = 45. Completion on the final permitted day meets the 'within 45 Business Days' limit. The remaining baseline conditions are satisfied."
+  },
+  {
+    "id": "H09",
+    "title": "Completion on the final ROFR exercise day",
+    "overrides": {
+      "as_of": "2026-10-26",
+      "transfer": {
+        "proposed_completion": "2026-10-26"
+      },
+      "company": {
+        "rofr_notice": {
+          "status": "delivered",
+          "sent_at": "2026-09-25T16:59",
+          "complete": "yes",
+          "proof_of_delivery": "yes"
+        },
+        "rofr_response": {
+          "status": "none"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "BLOCKED",
+      "rule_states": {
+        "C-ROFR-RESPONSE": "FAILED"
+      },
+      "dates": {
+        "C-ROFR-NOTICE.receipt_date": "2026-09-25",
+        "C-ROFR-RESPONSE.expiry_date": "2026-10-26"
+      }
+    },
+    "working": "The complete notice was sent Friday 2026-09-25 at 16:59 on a Business Day, so receipt is Sep 25. Count twenty Business Days strictly after receipt: Sep 28 = 1, Sep 29 = 2, Sep 30 = 3, Oct 1 = 4, Oct 2 = 5, Oct 5 = 6, Oct 6 = 7, Oct 7 = 8, Oct 8 = 9, Oct 9 = 10, Oct 12 is a listed holiday and is skipped, Oct 13 = 11, Oct 14 = 12, Oct 15 = 13, Oct 16 = 14, Oct 19 = 15, Oct 20 = 16, Oct 21 = 17, Oct 22 = 18, Oct 23 = 19, Oct 26 = 20. The exercise period runs through the end of Oct 26. A proposed completion on Oct 26 is on or before the expiry date, so with no waiver it is inside the still-running period and the rule marks it failed. The period is not expired at the end of that same day under the as_of convention."
+  },
+  {
+    "id": "H10",
+    "title": "GP deemed consent does not satisfy Company consent",
+    "overrides": {
+      "as_of": "2026-10-28",
+      "transfer": {
+        "transferor": "Harbour Family Office LLC",
+        "proposed_completion": "2026-10-28"
+      },
+      "fund": {
+        "claimed_side_letter": "harbour",
+        "gp_consent": {
+          "status": "requested",
+          "requested_at": "2026-10-12T10:00",
+          "complete": "yes"
+        }
+      },
+      "company": {
+        "consent": {
+          "status": "requested",
+          "requested_at": "2026-10-01T10:00"
+        }
+      }
+    },
+    "expect": {
+      "verdict": "CHECKLIST_READY",
+      "rule_states": {
+        "F-CONSENT": "SATISFIED",
+        "C-CONSENT": "OUTSTANDING"
+      },
+      "dates": {
+        "F-CONSENT.receipt_date": "2026-10-13",
+        "F-CONSENT.deemed_date": "2026-10-27"
+      }
+    },
+    "working": "The complete GP request was sent Monday 2026-10-12, a listed holiday, so receipt is Tuesday Oct 13. Count ten Business Days strictly after receipt: Wed Oct 14 = 1, Thu Oct 15 = 2, Fri Oct 16 = 3, Mon Oct 19 = 4, Tue Oct 20 = 5, Wed Oct 21 = 6, Thu Oct 22 = 7, Fri Oct 23 = 8, Mon Oct 26 = 9, Tue Oct 27 = 10. Deemed GP consent arises at the end of Oct 27, and as_of is Oct 28, which is after that date, so F-CONSENT is satisfied. The Company separately received a consent request and has not responded. SA 3.4 says its silence is not consent, and the Harbour letter does not change Company obligations, so C-CONSENT remains outstanding. The baseline written ROFR waiver is in place; its 45-Business-Day window after Aug 27 ends Nov 2, so proposed completion Oct 28 is within the window. No failure or unknown state remains."
+  }
+]
