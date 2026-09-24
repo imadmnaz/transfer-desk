@@ -270,6 +270,28 @@ function firstSentence(text) {
   return m ? m[0] : text;
 }
 
+function prefersReducedMotion() {
+  return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// A short count-up from 0 to target, used only for the sweep's final
+// numbers: it is a flourish on a number the operator already watched
+// climb during the run, never a substitute for the real figure.
+function animateCount(node, target, duration = 700) {
+  if (prefersReducedMotion() || target === 0) {
+    node.textContent = target.toLocaleString('en-US');
+    return;
+  }
+  const start = performance.now();
+  function tick(now) {
+    const progress = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    node.textContent = Math.round(target * eased).toLocaleString('en-US');
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 function daysAwayText(fromISO, toISO) {
   const from = Date.UTC(...fromISO.split('-').map(Number));
   const to = Date.UTC(...toISO.split('-').map(Number));
@@ -359,8 +381,41 @@ function renderCompletionCell(row) {
   return wrap;
 }
 
+// Rows due within the next 7 days (including overdue-today), soonest
+// first: the same due dates the queue's "Next due" column and the
+// Deadlines view already read, just surfaced above the table so the
+// most time-sensitive requests never wait for a filter or a scroll.
+function renderDueWeekStrip(allRows) {
+  const strip = document.getElementById('due-week-strip');
+  const list = document.getElementById('due-week-list');
+  const asOf = DATA.baseFacts.as_of;
+  const dueSoon = allRows
+    .filter((r) => r.dueDate && r.dueDate >= asOf)
+    .filter((r) => {
+      const from = Date.UTC(...asOf.split('-').map(Number));
+      const to = Date.UTC(...r.dueDate.split('-').map(Number));
+      return Math.round((to - from) / 86400000) <= 7;
+    })
+    .sort((a, b) => (a.dueDate < b.dueDate ? -1 : a.dueDate > b.dueDate ? 1 : 0));
+
+  strip.hidden = dueSoon.length === 0;
+  list.innerHTML = '';
+  for (const row of dueSoon) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'due-week-item';
+    btn.appendChild(el('span', 'due-week-item-date', `${shortReadable(row.dueDate)} · ${daysAwayText(asOf, row.dueDate)}`));
+    btn.appendChild(el('span', 'due-week-item-name', row.sellerBuyer));
+    btn.addEventListener('click', () => navigate(`#/request/${row.id}`));
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+}
+
 function renderQueue() {
   const allRows = QUEUE_ROWS.map((r) => r.id).map(queueRowFor).sort(compareRows);
+  renderDueWeekStrip(allRows);
   const searched = allRows.filter((r) => rowMatchesQuery(r, state.queueQuery));
 
   const counts = { all: searched.length, blocked: 0, lawyer: 0, actions: 0, ready: 0 };
@@ -1663,6 +1718,87 @@ function handlePickerKeydown(e) {
   }
 }
 
+// --- Keyboard shortcuts overlay -------------------------------------------
+
+let shortcutsTrigger = null;
+
+function openShortcuts(triggerEl) {
+  shortcutsTrigger = triggerEl || document.activeElement;
+  document.getElementById('shortcuts-overlay').hidden = false;
+  document.getElementById('shortcuts-close').focus();
+}
+
+function closeShortcuts() {
+  document.getElementById('shortcuts-overlay').hidden = true;
+  if (shortcutsTrigger) shortcutsTrigger.focus();
+  shortcutsTrigger = null;
+}
+
+function handleShortcutsKeydown(e) {
+  if (e.key === 'Escape') {
+    closeShortcuts();
+    return;
+  }
+  if (e.key !== 'Tab') return;
+  const dialog = document.getElementById('shortcuts-overlay');
+  const focusable = getFocusable(dialog);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+// The queue's own j/k/Enter/,/Esc/? shortcuts. Only active on the queue
+// view, and only when no overlay is open and the user isn't typing
+// somewhere else, so a keystroke never fights with a form field.
+function isTypingTarget(target) {
+  return !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+}
+
+function anyOverlayOpen() {
+  return !document.getElementById('shortcuts-overlay').hidden ||
+    !document.getElementById('scenario-picker').hidden ||
+    !document.getElementById('doc-viewer').hidden ||
+    !document.getElementById('nav-drawer').hidden;
+}
+
+function handleQueueShortcuts(e) {
+  if (state.route.view !== 'queue') return;
+  if (anyOverlayOpen()) return;
+
+  const typing = isTypingTarget(document.activeElement);
+  const search = document.getElementById('queue-search');
+
+  if (e.key === '/' && !typing) {
+    e.preventDefault();
+    search.focus();
+    return;
+  }
+  if (e.key === 'Escape' && document.activeElement === search) {
+    search.blur();
+    return;
+  }
+  if (e.key === '?' && !typing) {
+    e.preventDefault();
+    openShortcuts();
+    return;
+  }
+  if (typing || e.key !== 'j' && e.key !== 'k') return;
+
+  const rows = Array.from(document.querySelectorAll('#queue-table-body tr.queue-row'));
+  if (!rows.length) return;
+  e.preventDefault();
+  const idx = rows.indexOf(document.activeElement);
+  if (e.key === 'j') rows[idx < 0 ? 0 : Math.min(rows.length - 1, idx + 1)].focus();
+  else rows[idx < 0 ? 0 : Math.max(0, idx - 1)].focus();
+}
+
 // --- Nav drawer (mobile menu, mirrors the sidebar) -----------------------
 
 let drawerTrigger = null;
@@ -2288,14 +2424,21 @@ async function runSweepAndReport() {
 
   const unsafe = sweep.mustBlockFailures + sweep.uncertainClearFailures;
   result.innerHTML = '';
-  result.appendChild(el('p', 'sweep-unsafe' + (unsafe > 0 ? ' unsafe-nonzero' : ''), `${unsafe} unsafe clears`));
-  result.appendChild(
-    el(
-      'p',
-      'subline',
-      `${sweep.checked.toLocaleString('en-US')} combinations checked. Scenarios: ${scenariosPassed}/${DATA.scenarios.length}. Held-out: ${heldoutPassed}/${DATA.heldout.length}.`
-    )
+  const unsafeP = el('p', 'sweep-unsafe' + (unsafe > 0 ? ' unsafe-nonzero' : ''));
+  const unsafeNum = el('span', null, '0');
+  unsafeP.appendChild(unsafeNum);
+  unsafeP.appendChild(document.createTextNode(' unsafe clears'));
+  result.appendChild(unsafeP);
+  animateCount(unsafeNum, unsafe);
+
+  const checkedNum = el('span', null, '0');
+  const subline = el('p', 'subline');
+  subline.appendChild(checkedNum);
+  subline.appendChild(
+    document.createTextNode(` combinations checked. Scenarios: ${scenariosPassed}/${DATA.scenarios.length}. Held-out: ${heldoutPassed}/${DATA.heldout.length}.`)
   );
+  result.appendChild(subline);
+  animateCount(checkedNum, sweep.checked);
 
   btn.disabled = false;
   btn.textContent = original;
@@ -2341,13 +2484,16 @@ function wireEvents() {
 
   document.getElementById('run-sweep').addEventListener('click', runSweepAndReport);
 
-  document.getElementById('new-request-btn').addEventListener('click', () => {
-    navigate('#/request/NEW');
-  });
+  document.getElementById('new-request-btn').addEventListener('click', startNewRequestWizard);
   document.getElementById('open-scenarios-btn').addEventListener('click', (e) => openPicker(e.currentTarget));
   document.getElementById('picker-close').addEventListener('click', closePicker);
   document.getElementById('scenario-search').addEventListener('input', (e) => renderScenarioList(e.target.value));
   document.getElementById('scenario-picker').addEventListener('keydown', handlePickerKeydown);
+
+  document.getElementById('shortcuts-btn').addEventListener('click', (e) => openShortcuts(e.currentTarget));
+  document.getElementById('shortcuts-close').addEventListener('click', closeShortcuts);
+  document.getElementById('shortcuts-overlay').addEventListener('keydown', handleShortcutsKeydown);
+  document.addEventListener('keydown', handleQueueShortcuts);
 
   document.getElementById('queue-search').addEventListener('input', (e) => {
     state.queueQuery = e.target.value;

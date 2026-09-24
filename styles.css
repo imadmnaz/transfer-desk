@@ -840,6 +840,174 @@ a {
   }
 }
 
+.shortcuts-btn {
+  display: none;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.shortcuts-btn kbd {
+  font-family: var(--mono);
+}
+
+@media (min-width: 900px) {
+  .shortcuts-btn {
+    display: inline-flex;
+  }
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.shortcuts-panel {
+  padding: var(--s5);
+}
+
+.shortcuts-panel .picker-header {
+  justify-content: space-between;
+  margin-bottom: var(--s4);
+}
+
+.shortcuts-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.shortcuts-list > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s4);
+}
+
+.shortcuts-list dt {
+  flex-shrink: 0;
+  width: 84px;
+  display: flex;
+  gap: 4px;
+}
+
+.shortcuts-list dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------- due this week */
+
+.due-week-strip {
+  margin-top: var(--s5);
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+}
+
+.due-week-strip[hidden] {
+  display: none;
+}
+
+.due-week-label {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.due-week-list {
+  display: flex;
+  gap: var(--s3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  list-style: none;
+  margin: 0;
+  padding: 2px 2px;
+}
+
+.due-week-list::-webkit-scrollbar {
+  display: none;
+}
+
+.due-week-item {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: left;
+  transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+
+.due-week-item:hover {
+  border-color: var(--border-strong);
+}
+
+.due-week-item-date {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+
+.due-week-item-name {
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- skeleton */
+
+.skeleton-line {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton-line {
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.queue-skeleton-row td,
+.queue-skeleton-row {
+  padding: 12px 16px;
+}
+
+li.queue-skeleton-row {
+  list-style: none;
+  padding: 12px 16px;
+}
+
 .queue-card {
   margin-top: var(--s4);
   overflow: hidden;
@@ -1171,14 +1339,23 @@ a {
   gap: var(--s4);
 }
 
-.deal-col {
+.deal-col,
+.decision-col,
+.actions-col {
   display: flex;
   flex-direction: column;
   gap: var(--s4);
   min-width: 0;
 }
 
-@media (min-width: 1040px) {
+.request-disclosure {
+  margin-top: var(--s4);
+}
+
+/* Two columns first: the deal sheet, and decision+actions stacked
+   together, so a tablet-width screen still reads as distinct zones
+   rather than one long scroll. */
+@media (min-width: 900px) {
   .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 360px;
@@ -1191,11 +1368,35 @@ a {
     grid-row: 1;
   }
 
-  .answer-panel {
+  .decision-col,
+  .actions-col {
     grid-column: 2;
     grid-row: 1;
+  }
+
+  .answer-panel {
     position: sticky;
     top: calc(var(--topbar-height) + 24px);
+  }
+}
+
+/* Three real columns once there is room for them: deal sheet, decision,
+   actions, each its own visual zone rather than a stacked sidebar. */
+@media (min-width: 1180px) {
+  body.view-request .page {
+    max-width: 1360px;
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 340px;
+  }
+
+  .decision-col {
+    grid-column: 2;
+  }
+
+  .actions-col {
+    grid-column: 3;
   }
 }
 

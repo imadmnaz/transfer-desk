@@ -106,12 +106,18 @@
           <button id="new-request-btn" class="btn btn-primary" type="button">New request</button>
         </div>
 
+        <div id="due-week-strip" class="due-week-strip" hidden>
+          <span class="due-week-label">Due this week</span>
+          <ul id="due-week-list" class="due-week-list"></ul>
+        </div>
+
         <div class="queue-toolbar">
           <div id="queue-tabs" class="tabs" role="tablist" aria-label="Filter by status"></div>
           <label class="search">
             <span class="visually-hidden">Search requests</span>
             <input id="queue-search" type="search" placeholder="Search seller, buyer or reference" autocomplete="off">
           </label>
+          <button id="shortcuts-btn" class="btn btn-ghost btn-sm shortcuts-btn" type="button" aria-haspopup="dialog">Keyboard shortcuts <kbd>?</kbd></button>
         </div>
 
         <div class="card queue-card">
@@ -124,9 +130,19 @@
                 <th scope="col">Completion</th>
               </tr>
             </thead>
-            <tbody id="queue-table-body"></tbody>
+            <tbody id="queue-table-body">
+              <tr class="queue-skeleton-row" aria-hidden="true"><td colspan="4"><div class="skeleton-line"></div></td></tr>
+              <tr class="queue-skeleton-row" aria-hidden="true"><td colspan="4"><div class="skeleton-line"></div></td></tr>
+              <tr class="queue-skeleton-row" aria-hidden="true"><td colspan="4"><div class="skeleton-line"></div></td></tr>
+              <tr class="queue-skeleton-row" aria-hidden="true"><td colspan="4"><div class="skeleton-line"></div></td></tr>
+              <tr class="queue-skeleton-row" aria-hidden="true"><td colspan="4"><div class="skeleton-line"></div></td></tr>
+            </tbody>
           </table>
-          <ul id="queue-list-mobile" class="queue-list-mobile"></ul>
+          <ul id="queue-list-mobile" class="queue-list-mobile">
+            <li class="queue-skeleton-row" aria-hidden="true"><div class="skeleton-line"></div></li>
+            <li class="queue-skeleton-row" aria-hidden="true"><div class="skeleton-line"></div></li>
+            <li class="queue-skeleton-row" aria-hidden="true"><div class="skeleton-line"></div></li>
+          </ul>
           <p id="queue-empty" class="queue-empty" hidden>No requests match this filter.</p>
         </div>
 
@@ -186,41 +202,45 @@
         </div>
 
         <div class="layout">
-          <aside id="answer-panel" class="answer-panel card" aria-live="polite"></aside>
-
           <div class="deal-col">
-            <section id="next-section" class="card card-pad">
-              <h2 id="next-heading" class="section-title">Next actions</h2>
-              <ol id="next-list" class="checklist"></ol>
+            <section class="deal-block">
+              <h2 class="section-title section-title-bare">The deal</h2>
+              <p class="section-sub">Change any fact and the answer updates instantly.</p>
+              <div id="deal-form"></div>
             </section>
+          </div>
+
+          <div class="decision-col">
+            <aside id="answer-panel" class="answer-panel card" aria-live="polite"></aside>
 
             <section id="why-section" class="card card-pad">
               <h2 class="section-title">Why</h2>
               <div id="why-body"></div>
             </section>
+          </div>
 
-            <section class="deal-block">
-              <h2 class="section-title section-title-bare">The deal</h2>
-              <p class="section-sub">Change any fact and the answer updates instantly.</p>
-              <div id="deal-form"></div>
+          <div class="actions-col">
+            <section id="next-section" class="card card-pad">
+              <h2 id="next-heading" class="section-title">Next actions</h2>
+              <ol id="next-list" class="checklist"></ol>
             </section>
 
             <section id="activity-section" class="card card-pad">
               <h2 class="section-title">Activity</h2>
               <ol id="activity-list" class="activity-list"></ol>
             </section>
-
-            <section class="card card-pad">
-              <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="false">Every rule we checked</button>
-              <div id="all-rules-body" hidden></div>
-            </section>
-
-            <section id="audit-section" class="audit-section">
-              <button id="audit-toggle" class="disclosure-toggle disclosure-quiet" type="button" aria-expanded="false">Audit record</button>
-              <pre id="audit-json" class="audit-json" hidden></pre>
-            </section>
           </div>
         </div>
+
+        <section class="card card-pad request-disclosure">
+          <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="false">Every rule we checked</button>
+          <div id="all-rules-body" hidden></div>
+        </section>
+
+        <section id="audit-section" class="audit-section">
+          <button id="audit-toggle" class="disclosure-toggle disclosure-quiet" type="button" aria-expanded="false">Audit record</button>
+          <pre id="audit-json" class="audit-json" hidden></pre>
+        </section>
       </section>
 
     </main>
@@ -259,6 +279,22 @@
     <p class="sidebar-note">Synthetic documents. Not legal advice.</p>
     <a class="footer-link" href="https://github.com/imadmnaz/transfer-desk#readme" target="_blank" rel="noopener">How it was built</a>
     <button id="theme-toggle-drawer" class="theme-toggle" type="button">Dark</button>
+  </div>
+</div>
+
+<div id="shortcuts-overlay" class="scenario-picker shortcuts-overlay" hidden role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+  <div class="picker-panel shortcuts-panel">
+    <div class="picker-header">
+      <h2 class="section-title section-title-bare">Keyboard shortcuts</h2>
+      <button id="shortcuts-close" class="btn btn-ghost" type="button">Close</button>
+    </div>
+    <dl class="shortcuts-list">
+      <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Move between requests</dd></div>
+      <div><dt><kbd>Enter</kbd></dt><dd>Open the highlighted request</dd></div>
+      <div><dt><kbd>/</kbd></dt><dd>Search requests</dd></div>
+      <div><dt><kbd>Esc</kbd></dt><dd>Clear search or close a dialog</dd></div>
+      <div><dt><kbd>?</kbd></dt><dd>Show this list</dd></div>
+    </dl>
   </div>
 </div>
 
