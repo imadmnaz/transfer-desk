@@ -6,6 +6,10 @@ Transfer Desk checks whether a secondary transfer of an interest in a venture SP
 
 The documents, parties and dates are synthetic. This is not legal advice.
 
+![The same request on a laptop and on a phone.](docs/images/desktop-and-phone.png)
+
+The same request on a laptop and on a phone.
+
 ## Try it in a minute
 
 The demo opens on a queue of eight transfer requests for one SPV, the way an operations team would see them: each with its status, the reason in one line and its completion date. Every request opens into the deal itself, where each fact can be changed and the answer updates instantly.
@@ -16,7 +20,7 @@ The demo opens on a queue of eight transfer requests for one SPV, the way an ope
 4. **Open the request completing on Mon 2 Nov**, where Helion's right of first refusal is still running. Move completion to before Mon 26 Oct and it blocks, with the date the right lapses and the working behind it.
 5. **On any request with an action outstanding, log it.** The next action panel has a button for it: logging chases Helion's consent or the GP's, and the answer, the actions panel and the activity feed all update, with "Undo" on offer for a few seconds if you logged it by mistake.
 6. **Where a letter is needed, open the draft.** The consent request and the Transfer Notice each have a "Draft" button next to them that writes the letter from the facts on screen, ready to copy, marked "Draft for review. Not legal advice."
-7. **Back on the queue, run "Is it safe?"** It tries 486,000 combinations of facts in your browser and reports the number of unsafe clears: zero.
+7. **Open Assurance from the sidebar.** It runs all 31 known-answer cases and all 10 blind held-out cases live, in your browser, and a button there runs the same 486,000-combination stress test with a pass/fail breakdown and reports the number of unsafe clears: zero. "Try to break it" builds a random, deliberately awkward deal and shows why the answer still holds.
 
 "New request" starts a blank deal, and all 31 test scenarios can be opened from the queue.
 

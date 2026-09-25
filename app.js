@@ -62,6 +62,7 @@ const state = {
   // The current "Try to break it" random case on the Assurance page, kept
   // so leaving and returning to the page does not lose it.
   assuranceBreak: null,
+  lastPhoneUrl: null,
 };
 
 // The four display statuses. They are read from the engine's verdict and
@@ -2102,6 +2103,29 @@ function renderSidebarCounts() {
   if (drawerCount) drawerCount.textContent = count;
 }
 
+// Links to this exact page, including the current route, so scanning the
+// phone card from a request page opens that same request on the phone.
+function phoneUrl() {
+  return `https://imadmnaz.github.io/transfer-desk/${location.hash || ''}`;
+}
+
+function renderPhoneCard() {
+  const container = document.getElementById('phone-qr');
+  if (!container || typeof qrcode !== 'function') return;
+  const url = phoneUrl();
+  if (state.lastPhoneUrl === url) return;
+  state.lastPhoneUrl = url;
+  container.innerHTML = '';
+  try {
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+    container.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0 });
+  } catch (e) {
+    container.innerHTML = '';
+  }
+}
+
 function renderRequestView() {
   const id = state.route.id;
   let facts;
@@ -2147,6 +2171,7 @@ function render() {
   renderSidebarCounts();
   renderNavCurrent();
   wireAnswerBar();
+  renderPhoneCard();
 
   if (isRequest) renderRequestView();
   else if (isNew) renderWizard();

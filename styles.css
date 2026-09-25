@@ -549,6 +549,48 @@ a {
   color: var(--muted);
 }
 
+.phone-card {
+  display: none;
+  margin-top: var(--s4);
+  padding-top: var(--s4);
+  border-top: 1px solid var(--border);
+  align-items: center;
+  gap: var(--s3);
+}
+
+@media (min-width: 900px) {
+  .phone-card {
+    display: flex;
+  }
+}
+
+.phone-qr {
+  flex-shrink: 0;
+  width: 72px;
+  height: 72px;
+}
+
+.phone-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.phone-qr svg rect {
+  fill: var(--surface);
+}
+
+.phone-qr svg path {
+  fill: var(--ink);
+}
+
+.phone-card-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
 /* mobile answer bar: pinned at the top of the request page below 900px,
    so the verdict is never off screen while reading the deal or the
    actions. Tapping it jumps down to the full decision. */

@@ -8,6 +8,11 @@
 <meta name="theme-color" content="#F7F6F2" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111114" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Transfer Desk">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Transfer Desk">
 <meta property="og:description" content="Clears SPV secondary transfers against every document that governs them.">
@@ -53,6 +58,10 @@
       <p class="sidebar-note">Synthetic documents. Not legal advice.</p>
       <a class="footer-link" href="https://github.com/imadmnaz/transfer-desk#readme" target="_blank" rel="noopener">How it was built</a>
       <button id="theme-toggle" class="theme-toggle" type="button">Dark</button>
+      <div id="phone-card" class="phone-card">
+        <div id="phone-qr" class="phone-qr" aria-hidden="true"></div>
+        <p class="phone-card-text">Built for your phone too. Scan to open this page.</p>
+      </div>
     </div>
   </nav>
 
@@ -368,6 +377,7 @@
   <div id="doc-viewer-body" class="doc-viewer-body" tabindex="-1"></div>
 </aside>
 
+<script src="assets/qrcode.js"></script>
 <script src="engine/dates.js"></script>
 <script src="engine/engine.js"></script>
 <script src="app.js"></script>
