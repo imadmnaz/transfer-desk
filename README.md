@@ -14,7 +14,9 @@ The demo opens on a queue of eight transfer requests for one SPV, the way an ope
 2. **Change the buyer.** The answer moves to "ready for the GP to record", and the request's row in the queue changes with it.
 3. **Set Helion's consent to "Only agreed on a call".** The answer moves to lawyer review. The tool will not clear what it cannot evidence.
 4. **Open the request completing on Mon 2 Nov**, where Helion's right of first refusal is still running. Move completion to before Mon 26 Oct and it blocks, with the date the right lapses and the working behind it.
-5. **Back on the queue, run "Is it safe?"** It tries 486,000 combinations of facts in your browser and reports the number of unsafe clears: zero.
+5. **On any request with an action outstanding, log it.** The next action panel has a button for it: logging chases Helion's consent or the GP's, and the answer, the actions panel and the activity feed all update, with "Undo" on offer for a few seconds if you logged it by mistake.
+6. **Where a letter is needed, open the draft.** The consent request and the Transfer Notice each have a "Draft" button next to them that writes the letter from the facts on screen, ready to copy, marked "Draft for review. Not legal advice."
+7. **Back on the queue, run "Is it safe?"** It tries 486,000 combinations of facts in your browser and reports the number of unsafe clears: zero.
 
 "New request" starts a blank deal, and all 31 test scenarios can be opened from the queue.
 

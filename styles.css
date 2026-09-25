@@ -549,7 +549,9 @@ a {
   color: var(--muted);
 }
 
-/* mobile answer bar: appears once the decision card scrolls away */
+/* mobile answer bar: pinned at the top of the request page below 900px,
+   so the verdict is never off screen while reading the deal or the
+   actions. Tapping it jumps down to the full decision. */
 
 .mobile-answer-bar {
   position: fixed;
@@ -559,21 +561,28 @@ a {
   min-height: var(--mobile-bar-height);
   display: none;
   align-items: center;
+  width: 100%;
   gap: 12px;
   padding: 8px 16px;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
+  border: 0;
   border-bottom: 1px solid var(--border);
   z-index: 24;
 }
 
-.mobile-answer-bar.is-shown:not([hidden]) {
+.mobile-answer-bar:not([hidden]) {
   display: flex;
 }
 
-@media (min-width: 1040px) {
-  .mobile-answer-bar.is-shown:not([hidden]) {
+@media (min-width: 900px) {
+  .mobile-answer-bar:not([hidden]) {
     display: none;
   }
 }
@@ -607,7 +616,7 @@ a {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  text-decoration: none;
+  color: var(--accent-ink);
 }
 
 /* ------------------------------------------------------------ bottom tabs */
@@ -1300,6 +1309,14 @@ li.queue-skeleton-row {
 
 /* -------------------------------------------------------------- request */
 
+/* The mobile answer bar is pinned and out of flow, so reserve its height
+   above the request page content it would otherwise cover. */
+@media (max-width: 899.98px) {
+  #view-request {
+    padding-top: var(--mobile-bar-height);
+  }
+}
+
 .breadcrumb {
   margin: 0 0 var(--s3);
   font-size: 14px;
@@ -1368,10 +1385,14 @@ li.queue-skeleton-row {
     grid-row: 1;
   }
 
-  .decision-col,
-  .actions-col {
+  .decision-col {
     grid-column: 2;
     grid-row: 1;
+  }
+
+  .actions-col {
+    grid-column: 2;
+    grid-row: 2;
   }
 
   .answer-panel {
@@ -1397,6 +1418,7 @@ li.queue-skeleton-row {
 
   .actions-col {
     grid-column: 3;
+    grid-row: 1;
   }
 }
 

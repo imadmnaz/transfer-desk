@@ -67,13 +67,13 @@
       <button id="nav-menu-btn" class="nav-menu-btn" type="button" aria-expanded="false" aria-controls="nav-drawer">Menu</button>
     </header>
 
-    <div id="mobile-answer-bar" class="mobile-answer-bar" hidden aria-live="polite">
-      <div class="mobile-answer-text">
+    <button id="mobile-answer-bar" class="mobile-answer-bar" type="button" hidden aria-live="polite">
+      <span class="mobile-answer-text">
         <span id="mobile-verdict" class="mobile-verdict"></span>
         <span id="mobile-headline" class="mobile-headline"></span>
-      </div>
-      <a id="mobile-details-link" class="mobile-details-link" href="#why-section">Why</a>
-    </div>
+      </span>
+      <span class="mobile-details-link" aria-hidden="true">Decision</span>
+    </button>
 
     <nav class="bottom-tabs" aria-label="Primary">
       <button class="bottom-tab" type="button" data-nav="requests">
@@ -202,20 +202,20 @@
         </div>
 
         <div class="layout">
-          <div class="deal-col">
-            <section class="deal-block">
-              <h2 class="section-title section-title-bare">The deal</h2>
-              <p class="section-sub">Change any fact and the answer updates instantly.</p>
-              <div id="deal-form"></div>
-            </section>
-          </div>
-
           <div class="decision-col">
             <aside id="answer-panel" class="answer-panel card" aria-live="polite"></aside>
 
             <section id="why-section" class="card card-pad">
               <h2 class="section-title">Why</h2>
               <div id="why-body"></div>
+            </section>
+          </div>
+
+          <div class="deal-col">
+            <section class="deal-block">
+              <h2 class="section-title section-title-bare">The deal</h2>
+              <p class="section-sub">Change any fact and the answer updates instantly.</p>
+              <div id="deal-form"></div>
             </section>
           </div>
 

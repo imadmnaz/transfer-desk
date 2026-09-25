@@ -1429,6 +1429,34 @@ const GATE_STATUS_BADGE = {
   'Not relevant': 'badge-quiet',
 };
 
+// Short labels for "what's wrong" badges: what failed, not the rule's
+// title (a rule title reads as the satisfied condition, e.g. "Transferee
+// is not a Competitor", which is confusing next to a failure). Most rules
+// have one failure mode, but C-ROFR-RESPONSE has two, told apart by its
+// reason text below.
+const WHATS_WRONG_LABELS = {
+  'F-CONSENT': 'GP consent was refused',
+  'C-CONSENT': "Helion's consent was refused",
+  'F-PERMITTED-NOTICE': 'GP notice arrived too late',
+  'C-PERMITTED-NOTICE': "Helion's notice arrived too late",
+  'F-MIN-HOLDING': 'Holding falls below the minimum',
+  'F-BO-LIMIT': 'Transfer breaches the beneficial owner limit',
+  'C-COMPETITOR': 'Buyer is a Competitor',
+  'C-ROFR-WINDOW': 'Completion is outside the ROFR window',
+  'B-SANCTIONS': 'Buyer failed sanctions screening',
+  'B-ACCREDITED': 'Buyer is not accredited',
+};
+
+function whatsWrongLabel(rule, result) {
+  if (rule && rule.id === 'C-ROFR-RESPONSE') {
+    return result && /exercised its right of first refusal in whole/.test(result.reason)
+      ? 'Helion is buying the interest'
+      : 'Completion falls inside the ROFR period';
+  }
+  if (rule && WHATS_WRONG_LABELS[rule.id]) return WHATS_WRONG_LABELS[rule.id];
+  return (rule && rule.title) || 'Fails';
+}
+
 function renderAnswer(decision, ruleMap) {
   const status = statusOf(decision);
   const headline = ensureSentence(queueWording(humanize(decision.headline)));
@@ -1545,9 +1573,10 @@ function renderNext(decision, ruleMap) {
     for (const item of decision.checklist) {
       const li = el('li', 'is-cure');
       const rule = ruleMap.get(item.source_rule);
+      const result = decision.results.find((r) => r.rule_id === item.source_rule);
       const text = item.cure ? ensureSentence(humanize(item.cure)) : (rule && rule.no_cure) || 'Nothing on these facts.';
       const top = el('div', 'item-top');
-      top.appendChild(el('span', 'badge badge-blocked', rule ? rule.title : 'Fails'));
+      top.appendChild(el('span', 'badge badge-blocked', whatsWrongLabel(rule, result)));
       li.appendChild(top);
       li.appendChild(el('div', 'item-text', text));
       list.appendChild(li);
@@ -2045,20 +2074,17 @@ function renderNavCurrent() {
   }
 }
 
-// The compact answer bar appears on small screens only once the decision
-// card has scrolled out of view, so the answer is never off screen.
-let answerObserver = null;
+// The compact answer bar is pinned at the top of the request page below
+// 900px, so the verdict is never off screen. Tapping it jumps to the full
+// decision card.
+let answerBarWired = false;
 
-function watchAnswerPanel() {
-  if (answerObserver || !('IntersectionObserver' in window)) return;
-  const bar = document.getElementById('mobile-answer-bar');
-  answerObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) bar.classList.toggle('is-shown', !entry.isIntersecting && entry.boundingClientRect.top < 0);
-    },
-    { rootMargin: '-56px 0px 0px 0px' }
-  );
-  answerObserver.observe(document.getElementById('answer-panel'));
+function wireAnswerBar() {
+  if (answerBarWired) return;
+  answerBarWired = true;
+  document.getElementById('mobile-answer-bar').addEventListener('click', () => {
+    document.getElementById('answer-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
 }
 
 function renderSidebarCounts() {
@@ -2108,12 +2134,10 @@ function render() {
   document.getElementById('mobile-answer-bar').hidden = !isRequest;
   document.body.classList.toggle('view-request', isRequest);
 
-  if (!isRequest) document.getElementById('mobile-answer-bar').classList.remove('is-shown');
-
   renderTopbarContext();
   renderSidebarCounts();
   renderNavCurrent();
-  watchAnswerPanel();
+  wireAnswerBar();
 
   if (isRequest) renderRequestView();
   else if (isNew) renderWizard();
