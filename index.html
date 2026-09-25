@@ -46,7 +46,7 @@
       <li><button class="sidebar-link" type="button" data-nav="new">New request</button></li>
       <li><button class="sidebar-link" type="button" data-nav="deadlines">Deadlines</button></li>
       <li><button class="sidebar-link" type="button" data-nav="scenarios">Test scenarios</button></li>
-      <li><button class="sidebar-link" type="button" data-nav="safe">Is it safe?</button></li>
+      <li><button class="sidebar-link" type="button" data-nav="assurance">Assurance</button></li>
       <li><button class="sidebar-link" type="button" data-nav="documents">Documents</button></li>
     </ul>
     <div class="sidebar-footer">
@@ -150,12 +150,7 @@
           <button id="open-scenarios-btn" class="btn btn-secondary" type="button">Open any of the 31 test scenarios</button>
         </div>
 
-        <section id="safe-section" class="card card-pad safe-card">
-          <h2 class="section-title">Is it safe?</h2>
-          <p class="explainer">An unsafe clear is a case where a rule failed, or evidence was missing or contradictory, yet the tool said the checklist was ready anyway. This checks every combination of the facts that matter for that.</p>
-          <button id="run-sweep" class="btn btn-secondary run-sweep" type="button">Run all 486,000 combinations</button>
-          <div id="sweep-result" class="sweep-result" aria-live="polite"></div>
-        </section>
+        <p class="queue-assurance-link"><a href="#/assurance">How we know it's safe</a></p>
       </section>
 
       <!-- ============================ Deadlines ============================ -->
@@ -243,6 +238,61 @@
         </section>
       </section>
 
+      <!-- ============================ Assurance ============================ -->
+      <section id="view-assurance" hidden>
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Assurance</h1>
+            <p class="page-sub">Transfer Desk never marks a transfer ready when it should be blocked or sent to a lawyer.</p>
+          </div>
+        </div>
+        <p class="assurance-note">A wrong "ready" is the costly mistake. A wrong "lawyer review" only costs time, so every doubt goes to a lawyer.</p>
+
+        <section class="card card-pad assurance-card">
+          <h2 class="section-title">31 known answer cases</h2>
+          <p class="explainer">Written from the three documents, each with an expected answer.</p>
+          <p id="assurance-known-result" class="assurance-result"></p>
+          <button id="assurance-known-toggle" class="disclosure-toggle" type="button" aria-expanded="false">View the 31 cases</button>
+          <div id="assurance-known-body" hidden>
+            <ul id="assurance-known-list" class="assurance-list"></ul>
+          </div>
+        </section>
+
+        <section class="card card-pad assurance-card">
+          <h2 class="section-title">10 blind cases</h2>
+          <p class="explainer">Written independently from the documents, without access to the tool.</p>
+          <p id="assurance-heldout-result" class="assurance-result"></p>
+          <button id="assurance-heldout-toggle" class="disclosure-toggle" type="button" aria-expanded="false">View the 10 blind cases</button>
+          <div id="assurance-heldout-body" hidden>
+            <ul id="assurance-heldout-list" class="assurance-list"></ul>
+          </div>
+        </section>
+
+        <section class="card card-pad assurance-card">
+          <h2 class="section-title">486,000 combinations</h2>
+          <p class="explainer">Two rules are checked on every combination. Anything that must block, blocks. Nothing uncertain is ever cleared.</p>
+          <p class="explainer">Facts varied: relationship to the seller, whether the buyer is a Competitor, GP consent, Helion's consent, the Transfer Notice, Helion's response to it, sanctions screening, KYC, the beneficial owner count, and whether the documents version is confirmed.</p>
+          <button id="run-sweep" class="btn btn-secondary run-sweep" type="button">Run the stress test</button>
+          <div id="sweep-result" class="sweep-result" aria-live="polite"></div>
+        </section>
+
+        <section class="card card-pad assurance-card">
+          <h2 class="section-title">Try to break it</h2>
+          <p class="explainer">Builds a random deal from the facts above, weighted towards awkward evidence, and shows why the answer still holds.</p>
+          <button id="try-break-btn" class="btn btn-secondary" type="button">Try to break it</button>
+          <div id="break-result" class="break-result" aria-live="polite"></div>
+        </section>
+
+        <section class="card card-pad assurance-card">
+          <h2 class="section-title">What testing caught</h2>
+          <ul class="assurance-caught-list">
+            <li>A recorded exercise of Helion's right of first refusal was ignored when the Transfer Notice was not evidenced, which could have cleared a void transfer. It now blocks, with four regression tests.</li>
+            <li>Incomplete facts made the engine stop with an error. It now sends them to a lawyer and names the missing fact, and a fuzz test covers every control value in every scenario.</li>
+          </ul>
+          <a class="footer-link" href="https://github.com/imadmnaz/transfer-desk/blob/main/docs/REVIEW-LOG.md" target="_blank" rel="noopener">Read the review log</a>
+        </section>
+      </section>
+
     </main>
 
     <footer class="footer">
@@ -272,7 +322,7 @@
     <li><button class="sidebar-link" type="button" data-nav="new">New request</button></li>
     <li><button class="sidebar-link" type="button" data-nav="deadlines">Deadlines</button></li>
     <li><button class="sidebar-link" type="button" data-nav="scenarios">Test scenarios</button></li>
-    <li><button class="sidebar-link" type="button" data-nav="safe">Is it safe?</button></li>
+    <li><button class="sidebar-link" type="button" data-nav="assurance">Assurance</button></li>
     <li><button class="sidebar-link" type="button" data-nav="documents">Documents</button></li>
   </ul>
   <div class="sidebar-footer">

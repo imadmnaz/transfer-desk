@@ -1192,8 +1192,9 @@ li.queue-skeleton-row {
   line-height: 20px;
 }
 
-.safe-card {
-  margin-top: var(--s8);
+.queue-assurance-link {
+  margin: var(--s6) 0 0;
+  font-size: 14px;
 }
 
 /* ------------------------------------------------------------ new request wizard */
@@ -1305,6 +1306,188 @@ li.queue-skeleton-row {
   margin: 6px 0 0;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* -------------------------------------------------------------- assurance */
+
+.assurance-note {
+  max-width: 68ch;
+  margin: var(--s2) 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.assurance-card {
+  margin-top: var(--s5);
+}
+
+.assurance-card .explainer:first-of-type {
+  margin-top: var(--s2);
+}
+
+.assurance-result {
+  margin: var(--s3) 0 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.assurance-card .disclosure-toggle {
+  margin-top: var(--s3);
+}
+
+.assurance-list {
+  list-style: none;
+  margin: var(--s4) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.assurance-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+button.assurance-row:hover {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.assurance-row-top {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.assurance-row-id {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.assurance-row-name {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.assurance-row-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sweep-bar {
+  margin-top: var(--s4);
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.sweep-seg {
+  height: 100%;
+}
+
+.sweep-seg-blocked {
+  background: var(--blocked);
+}
+
+.sweep-seg-lawyer {
+  background: var(--lawyer);
+}
+
+.sweep-seg-actions {
+  background: var(--accent);
+}
+
+.sweep-seg-ready {
+  background: var(--border-strong);
+}
+
+.sweep-legend {
+  list-style: none;
+  margin: var(--s3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s5);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sweep-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sweep-legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.break-result:empty {
+  display: none;
+}
+
+.break-facts {
+  margin: var(--s4) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink-2);
+}
+
+.break-facts li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.break-headline {
+  margin: var(--s3) 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 25px;
+}
+
+.break-safety {
+  margin: var(--s2) 0 0;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--ink-2);
+}
+
+.break-result .badge {
+  margin-top: var(--s4);
+}
+
+.break-actions {
+  display: flex;
+  gap: var(--s3);
+  margin-top: var(--s4);
+  flex-wrap: wrap;
+}
+
+.assurance-caught-list {
+  margin: var(--s2) 0 var(--s4);
+  padding-left: 1.1em;
+  font-size: 15px;
+  line-height: 23px;
+  color: var(--ink-2);
+}
+
+.assurance-caught-list li + li {
+  margin-top: var(--s3);
 }
 
 /* -------------------------------------------------------------- request */

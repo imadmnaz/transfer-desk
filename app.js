@@ -59,6 +59,9 @@ const state = {
   // engine never reads it.
   activity: {},
   undo: null,
+  // The current "Try to break it" random case on the Assurance page, kept
+  // so leaving and returning to the page does not lose it.
+  assuranceBreak: null,
 };
 
 // The four display statuses. They are read from the engine's verdict and
@@ -132,6 +135,7 @@ function parseHash() {
   if (m) return { view: 'request', id: decodeURIComponent(m[1]) };
   if (location.hash === '#/new') return { view: 'new', id: 'NEW' };
   if (location.hash === '#/deadlines') return { view: 'deadlines' };
+  if (location.hash === '#/assurance') return { view: 'assurance' };
   return { view: 'queue' };
 }
 
@@ -193,6 +197,16 @@ function el(tag, className, text) {
   if (className) e.className = className;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+function wireDisclosure(toggleId, bodyId) {
+  const btn = document.getElementById(toggleId);
+  const body = document.getElementById(bodyId);
+  btn.addEventListener('click', () => {
+    const willShow = body.hidden;
+    body.hidden = !willShow;
+    btn.setAttribute('aria-expanded', String(willShow));
+  });
 }
 
 function humanize(text) {
@@ -1872,14 +1886,7 @@ function runNavAction(action, triggerEl) {
   else if (action === 'deadlines') navigate('#/deadlines');
   else if (action === 'scenarios') openPicker(triggerEl);
   else if (action === 'documents') openDocViewer('LPA', null);
-  else if (action === 'safe') {
-    if (state.route.view === 'queue') {
-      document.getElementById('safe-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      state.scrollToSafe = true;
-      navigate('#/');
-    }
-  }
+  else if (action === 'assurance') navigate('#/assurance');
 }
 
 // --- Document viewer (reads docs/source Markdown, tab per document) ------
@@ -2047,7 +2054,7 @@ function renderBreadcrumb(id) {
   el2.appendChild(link);
   el2.appendChild(el('span', 'sep', '/'));
   const meta = QUEUE_META[id];
-  el2.appendChild(el('span', 'current', meta ? meta.ref : id === 'NEW' ? 'New request' : `Scenario ${id}`));
+  el2.appendChild(el('span', 'current', meta ? meta.ref : id === 'NEW' ? 'New request' : id === 'TRY' ? 'Try to break it' : `Scenario ${id}`));
 }
 
 function renderRequestHead(facts) {
@@ -2067,7 +2074,7 @@ function renderTopbarContext() {
 
 function renderNavCurrent() {
   const route = state.route;
-  const current = route.view === 'new' ? 'new' : route.view === 'deadlines' ? 'deadlines' : 'requests';
+  const current = route.view === 'new' ? 'new' : route.view === 'deadlines' ? 'deadlines' : route.view === 'assurance' ? 'assurance' : 'requests';
   for (const btn of document.querySelectorAll('[data-nav]')) {
     if (btn.dataset.nav === current) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
@@ -2125,11 +2132,13 @@ function render() {
   const isRequest = view === 'request';
   const isNew = view === 'new';
   const isDeadlines = view === 'deadlines';
+  const isAssurance = view === 'assurance';
   const isQueue = view === 'queue';
 
   document.getElementById('view-queue').hidden = !isQueue;
   document.getElementById('view-new').hidden = !isNew;
   document.getElementById('view-deadlines').hidden = !isDeadlines;
+  document.getElementById('view-assurance').hidden = !isAssurance;
   document.getElementById('view-request').hidden = !isRequest;
   document.getElementById('mobile-answer-bar').hidden = !isRequest;
   document.body.classList.toggle('view-request', isRequest);
@@ -2142,6 +2151,7 @@ function render() {
   if (isRequest) renderRequestView();
   else if (isNew) renderWizard();
   else if (isDeadlines) renderDeadlines();
+  else if (isAssurance) renderAssuranceView();
   else renderQueue();
 }
 
@@ -2355,12 +2365,14 @@ async function runSweepWithProgress(onProgress) {
   let mustBlockFailures = 0;
   let uncertainClearFailures = 0;
   let sinceYield = 0;
+  const counts = { blocked: 0, lawyer: 0, actions: 0, ready: 0 };
 
   for (const c of generateSweepCases()) {
     const { decision, mustBlock, uncertain } = evaluateSweepCase(c);
     checked++;
     if (mustBlock && decision.verdict !== 'BLOCKED') mustBlockFailures++;
     if (uncertain && decision.verdict === 'CHECKLIST_READY') uncertainClearFailures++;
+    counts[statusOf(decision).key]++;
     sinceYield++;
     if (sinceYield >= CHUNK) {
       sinceYield = 0;
@@ -2370,7 +2382,7 @@ async function runSweepWithProgress(onProgress) {
   }
 
   onProgress(checked);
-  return { checked, mustBlockFailures, uncertainClearFailures };
+  return { checked, mustBlockFailures, uncertainClearFailures, counts };
 }
 
 const HELD_OUT_DATE_FIELD_ALIASES = {
@@ -2464,8 +2476,301 @@ async function runSweepAndReport() {
   result.appendChild(subline);
   animateCount(checkedNum, sweep.checked);
 
+  const segments = [
+    { key: 'blocked', label: 'Blocked', cls: 'sweep-seg-blocked' },
+    { key: 'lawyer', label: 'Lawyer review', cls: 'sweep-seg-lawyer' },
+    { key: 'actions', label: 'Actions outstanding', cls: 'sweep-seg-actions' },
+    { key: 'ready', label: 'Ready to record', cls: 'sweep-seg-ready' },
+  ];
+  const bar = el('div', 'sweep-bar');
+  for (const seg of segments) {
+    const span = el('div', `sweep-seg ${seg.cls}`);
+    span.style.width = `${(sweep.counts[seg.key] / sweep.checked) * 100}%`;
+    bar.appendChild(span);
+  }
+  result.appendChild(bar);
+
+  const legend = el('ul', 'sweep-legend');
+  for (const seg of segments) {
+    const li = el('li');
+    li.appendChild(el('span', `sweep-legend-dot ${seg.cls}`));
+    li.appendChild(document.createTextNode(`${seg.label}: ${sweep.counts[seg.key].toLocaleString('en-US')}`));
+    legend.appendChild(li);
+  }
+  result.appendChild(legend);
+
   btn.disabled = false;
   btn.textContent = original;
+}
+
+// --- Assurance page ---------------------------------------------------
+
+const VERDICT_LABEL = {
+  BLOCKED: 'Blocked',
+  ESCALATE: 'Lawyer review',
+  CHECKLIST_READY: 'Checklist ready',
+};
+
+// One plain line per held-out case, drawn from its title and its working
+// in heldout.json: what makes that case a trap rather than a routine one.
+const HELD_OUT_TRAPS = {
+  H01: 'Both notices were sent at exactly 17:00, the boundary instant for same day receipt.',
+  H02: 'Sent on a day that is a listed holiday, so receipt must roll to the next Business Day.',
+  H03: 'The beneficial owner count and both resulting holdings land exactly on their limits.',
+  H04: "An Affiliate buyer is also an Affiliate of a listed Competitor, which no permitted transfer notice can cure.",
+  H05: 'Deemed consent would arise on the same day as_of falls, testing the "after that date" boundary.',
+  H06: "Completion falls one Business Day short of the Company's ten clear day minimum.",
+  H07: "The right of first refusal's exercise period ends on as_of itself, testing whether it has actually expired.",
+  H08: 'Completion lands on the very last Business Day the 45 day completion window allows.',
+  H09: "Completion is proposed for the exercise period's own final day, before it has expired.",
+  H10: "The GP's deemed consent under the side letter is tested against the Company's own, separate consent.",
+};
+
+function datesMatch(decision, expect, translateDateField) {
+  const translate = translateDateField || ((f) => f);
+  for (const [key, expectedDate] of Object.entries(expect.dates || {})) {
+    const [ruleId, rawField] = key.split('.');
+    const field = translate(rawField);
+    const r = findResult(decision, ruleId);
+    if (!r || !r.computed || !r.computed[field] || r.computed[field].date !== expectedDate) return false;
+  }
+  return true;
+}
+
+function renderAssuranceKnownAnswers() {
+  const list = document.getElementById('assurance-known-list');
+  list.innerHTML = '';
+  let passed = 0;
+  for (const s of DATA.scenarios) {
+    const { decision } = decisionForCase(s);
+    const pass = caseFailures(decision, s.expect).length === 0;
+    if (pass) passed++;
+
+    const li = document.createElement('li');
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'assurance-row';
+    row.addEventListener('click', () => navigate(`#/request/${s.id}`));
+    const top = el('div', 'assurance-row-top');
+    top.appendChild(el('span', 'assurance-row-id', s.id));
+    top.appendChild(el('span', 'assurance-row-name', s.display_name));
+    top.appendChild(el('span', `badge ${pass ? 'badge-ready' : 'badge-blocked'}`, pass ? 'Pass' : 'Fail'));
+    row.appendChild(top);
+    row.appendChild(el('div', 'assurance-row-sub', `Expected ${VERDICT_LABEL[s.expect.verdict]} · result ${VERDICT_LABEL[decision.verdict]}`));
+    li.appendChild(row);
+    list.appendChild(li);
+  }
+  document.getElementById('assurance-known-result').textContent = `${passed}/${DATA.scenarios.length} known answer cases pass`;
+}
+
+function renderAssuranceHeldOut() {
+  const list = document.getElementById('assurance-heldout-list');
+  list.innerHTML = '';
+  let passed = 0;
+  const translate = (f) => HELD_OUT_DATE_FIELD_ALIASES[f] || f;
+  for (const c of DATA.heldout) {
+    const { decision } = decisionForCase(c);
+    const pass = caseFailures(decision, c.expect, translate).length === 0;
+    if (pass) passed++;
+    const okDates = datesMatch(decision, c.expect, translate);
+
+    const li = document.createElement('li');
+    li.className = 'assurance-row';
+    const top = el('div', 'assurance-row-top');
+    top.appendChild(el('span', 'assurance-row-id', c.id));
+    top.appendChild(el('span', 'assurance-row-name', c.title));
+    top.appendChild(el('span', `badge ${pass ? 'badge-ready' : 'badge-blocked'}`, pass ? 'Pass' : 'Fail'));
+    li.appendChild(top);
+    li.appendChild(el('div', 'assurance-row-sub', HELD_OUT_TRAPS[c.id] || ''));
+    li.appendChild(
+      el(
+        'div',
+        'assurance-row-sub',
+        `Expected ${VERDICT_LABEL[c.expect.verdict]} · actual ${VERDICT_LABEL[decision.verdict]} · dates ${okDates ? 'all matched' : 'did not all match'}`
+      )
+    );
+    list.appendChild(li);
+  }
+  document.getElementById('assurance-heldout-result').textContent = `${passed}/${DATA.heldout.length} blind cases pass`;
+}
+
+// --- Try to break it -------------------------------------------------
+
+// Reuses the sweep's own axes so the random deal is always built from the
+// same facts the 486,000 combination stress test varies.
+const BREAK_WEIGHTS = {
+  relationship: {},
+  competitor: { yes: 4, unknown: 4 },
+  gpConsent: { refused: 3, unknown: 3, contradictory: 3, requested_complete_unknown: 3 },
+  companyConsent: { refused: 3, unknown: 3, contradictory: 3 },
+  rofrNotice: { sent_no_proof: 3, delivered_complete_unknown: 3, delivered_complete_no: 3 },
+  rofrResponse: { exercised_whole: 3, exercised_partial: 3, unknown: 3 },
+  sanctions: { hit: 3, unknown: 3 },
+  kyc: { unknown: 3 },
+  boLimit: { null: 2 },
+  version: { no: 3 },
+};
+
+const RELATIONSHIP_TEXT = {
+  unrelated: 'Buyer is unrelated to the seller',
+  affiliate: "Buyer is the seller's affiliate",
+  harbour_transferee: 'Buyer is a fund managed by Harbour, under the side letter',
+};
+const COMPETITOR_TEXT = {
+  no: 'Buyer is not a Competitor',
+  yes: 'Buyer is a Competitor',
+  unknown: 'Whether the buyer is a Competitor is not known',
+};
+const GP_CONSENT_TEXT = {
+  received: 'GP consent given in writing',
+  refused: 'GP consent refused',
+  unknown: 'GP consent status unclear',
+  contradictory: 'GP consent evidence conflicts',
+  not_requested: 'GP consent not yet requested',
+  requested_complete_unknown: 'GP consent requested, but completeness of the request is not known',
+};
+const COMPANY_CONSENT_TEXT = {
+  received: "Helion's consent given in writing",
+  refused: "Helion's consent refused",
+  unknown: "Helion's consent status unclear",
+  contradictory: "Helion's consent evidence conflicts",
+  not_requested: "Helion's consent not yet requested",
+};
+const ROFR_NOTICE_TEXT = {
+  delivered_complete_yes: 'Transfer Notice delivered, with proof',
+  not_sent: 'Transfer Notice not sent',
+  sent_no_proof: 'Transfer Notice sent, no proof of delivery',
+  delivered_complete_unknown: 'Transfer Notice delivered, but its completeness is not known',
+  delivered_complete_no: 'Transfer Notice delivered, but it was incomplete',
+};
+const ROFR_RESPONSE_TEXT = {
+  waived: 'Helion has waived its right of first refusal',
+  none: 'Helion has not responded to the right of first refusal',
+  exercised_whole: 'Helion has exercised its right of first refusal in whole',
+  exercised_partial: 'Helion has purported to exercise its right of first refusal in part',
+  unknown: "Helion's response to the right of first refusal is not known",
+};
+const SANCTIONS_TEXT = {
+  clear: 'Sanctions screening clear',
+  hit: 'Sanctions screening returned a hit',
+  unknown: 'Sanctions screening status not known',
+  pending: 'Sanctions screening still pending',
+};
+const KYC_TEXT = {
+  cleared: 'KYC and AML checks cleared',
+  unknown: 'KYC status not known',
+  pending: 'KYC still pending',
+};
+const BO_TEXT = {
+  80: '80 beneficial owners before the sale',
+  95: '95 beneficial owners before the sale',
+  null: 'Beneficial owner count not known',
+};
+const VERSION_TEXT = {
+  yes: 'Documents version confirmed',
+  no: 'Documents version not confirmed',
+};
+
+function pickWeighted(list, weights) {
+  const w = list.map((item) => (weights && weights[item.key] != null ? weights[item.key] : 1));
+  const total = w.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < list.length; i++) {
+    if (r < w[i]) return list[i];
+    r -= w[i];
+  }
+  return list[list.length - 1];
+}
+
+function generateBreakCase() {
+  const picks = {
+    relationship: pickWeighted(SWEEP_RELATIONSHIP, BREAK_WEIGHTS.relationship),
+    competitor: pickWeighted(SWEEP_COMPETITOR, BREAK_WEIGHTS.competitor),
+    gpConsent: pickWeighted(SWEEP_GP_CONSENT, BREAK_WEIGHTS.gpConsent),
+    companyConsent: pickWeighted(SWEEP_COMPANY_CONSENT, BREAK_WEIGHTS.companyConsent),
+    rofrNotice: pickWeighted(SWEEP_ROFR_NOTICE, BREAK_WEIGHTS.rofrNotice),
+    rofrResponse: pickWeighted(SWEEP_ROFR_RESPONSE, BREAK_WEIGHTS.rofrResponse),
+    sanctions: pickWeighted(SWEEP_SANCTIONS, BREAK_WEIGHTS.sanctions),
+    kyc: pickWeighted(SWEEP_KYC, BREAK_WEIGHTS.kyc),
+    boLimit: pickWeighted(SWEEP_BO_LIMIT, BREAK_WEIGHTS.boLimit),
+    version: pickWeighted(SWEEP_VERSION, BREAK_WEIGHTS.version),
+  };
+  let overrides = {};
+  for (const pick of Object.values(picks)) overrides = Engine.deepMergeFacts(overrides, pick.overrides);
+  const facts = Engine.deepMergeFacts(DATA.baseFacts, overrides);
+  const decision = Engine.evaluate(facts, DATA.rulebook, DATA.calendar);
+  return { picks, overrides, facts, decision };
+}
+
+function breakFactLines(picks) {
+  return [
+    RELATIONSHIP_TEXT[picks.relationship.key],
+    COMPETITOR_TEXT[picks.competitor.key],
+    GP_CONSENT_TEXT[picks.gpConsent.key],
+    COMPANY_CONSENT_TEXT[picks.companyConsent.key],
+    ROFR_NOTICE_TEXT[picks.rofrNotice.key],
+    ROFR_RESPONSE_TEXT[picks.rofrResponse.key],
+    SANCTIONS_TEXT[picks.sanctions.key],
+    KYC_TEXT[picks.kyc.key],
+    BO_TEXT[picks.boLimit.key],
+    VERSION_TEXT[picks.version.key],
+  ];
+}
+
+// Why the answer is safe even though the deal is deliberately awkward: a
+// short line naming the one fact a lawyer, or a cure, must resolve.
+function safetyExplanation(decision, ruleMap) {
+  if (decision.verdict === 'BLOCKED') {
+    const r = decision.results.find((x) => x.state === 'FAILED');
+    const rule = r ? ruleMap.get(r.rule_id) : null;
+    return `${ensureSentence(whatsWrongLabel(rule, r))} A blocked transfer is never recorded.`;
+  }
+  if (decision.verdict === 'ESCALATE') {
+    const r = decision.results.find((x) => x.state === 'UNKNOWN' || x.state === 'CONTRADICTORY');
+    const line = r ? firstSentence(queueWording(r.reason)) : 'Evidence is missing, unclear or conflicting.';
+    return `${ensureSentence(line)} A lawyer must decide before anything moves.`;
+  }
+  return 'Every known condition is satisfied or has a clear next step. A ready checklist is not an approval; recording stays a human act.';
+}
+
+function renderBreakResult(breakCase) {
+  const container = document.getElementById('break-result');
+  container.innerHTML = '';
+  if (!breakCase) return;
+  const { picks, decision } = breakCase;
+  const status = statusOf(decision);
+  const ruleMap = new Map(DATA.rulebook.rules.map((r) => [r.id, r]));
+
+  const factsList = el('ul', 'break-facts');
+  for (const line of breakFactLines(picks)) factsList.appendChild(el('li', null, line));
+  container.appendChild(factsList);
+
+  container.appendChild(el('span', `badge badge-lg ${status.badge}`, status.long));
+  container.appendChild(el('p', 'break-headline', ensureSentence(queueWording(humanize(decision.headline)))));
+  container.appendChild(el('p', 'break-safety', safetyExplanation(decision, ruleMap)));
+
+  const actions = el('div', 'break-actions');
+  const openBtn = el('button', 'btn btn-secondary btn-sm', 'Open this as a request');
+  openBtn.type = 'button';
+  openBtn.addEventListener('click', () => {
+    state.requestOverrides.TRY = breakCase.overrides;
+    navigate('#/request/TRY');
+  });
+  const againBtn = el('button', 'btn btn-ghost btn-sm', 'Try another');
+  againBtn.type = 'button';
+  againBtn.addEventListener('click', () => {
+    state.assuranceBreak = generateBreakCase();
+    renderBreakResult(state.assuranceBreak);
+  });
+  actions.appendChild(openBtn);
+  actions.appendChild(againBtn);
+  container.appendChild(actions);
+}
+
+function renderAssuranceView() {
+  renderAssuranceKnownAnswers();
+  renderAssuranceHeldOut();
+  renderBreakResult(state.assuranceBreak);
 }
 
 // --- Wiring ---------------------------------------------------------------
@@ -2490,23 +2795,16 @@ function wireEvents() {
   document.getElementById('doc-viewer-backdrop').addEventListener('click', closeDocViewer);
   document.getElementById('doc-viewer').addEventListener('keydown', handleDocViewerKeydown);
 
-  document.getElementById('audit-toggle').addEventListener('click', () => {
-    const pre = document.getElementById('audit-json');
-    const btn = document.getElementById('audit-toggle');
-    const willShow = pre.hidden;
-    pre.hidden = !willShow;
-    btn.setAttribute('aria-expanded', String(willShow));
-  });
-
-  document.getElementById('all-rules-toggle').addEventListener('click', () => {
-    const body = document.getElementById('all-rules-body');
-    const btn = document.getElementById('all-rules-toggle');
-    const willShow = body.hidden;
-    body.hidden = !willShow;
-    btn.setAttribute('aria-expanded', String(willShow));
-  });
+  wireDisclosure('audit-toggle', 'audit-json');
+  wireDisclosure('all-rules-toggle', 'all-rules-body');
+  wireDisclosure('assurance-known-toggle', 'assurance-known-body');
+  wireDisclosure('assurance-heldout-toggle', 'assurance-heldout-body');
 
   document.getElementById('run-sweep').addEventListener('click', runSweepAndReport);
+  document.getElementById('try-break-btn').addEventListener('click', () => {
+    state.assuranceBreak = generateBreakCase();
+    renderBreakResult(state.assuranceBreak);
+  });
 
   document.getElementById('new-request-btn').addEventListener('click', startNewRequestWizard);
   document.getElementById('open-scenarios-btn').addEventListener('click', (e) => openPicker(e.currentTarget));
@@ -2529,12 +2827,7 @@ function wireEvents() {
     hideToast();
     state.undo = null;
     render();
-    if (state.scrollToSafe) {
-      state.scrollToSafe = false;
-      document.getElementById('safe-section')?.scrollIntoView({ block: 'start' });
-    } else {
-      window.scrollTo(0, 0);
-    }
+    window.scrollTo(0, 0);
   });
 }
 
