@@ -39,6 +39,30 @@ const QUEUE_ROWS = [
   { id: 'T13', ref: 'TR-0131', received: '2026-08-25' },
   { id: 'T26', ref: 'TR-0150', received: '2026-09-29' },
   { id: 'T01', ref: 'TR-0128', received: '2026-08-20', displayOverrides: { transfer: { transferor: 'Daniel Okafor' } } },
+  {
+    id: 'T06',
+    ref: 'TR-0120',
+    received: '2026-08-03',
+    displayOverrides: { transfer: { transferor: 'Rosalind Kerr', transferee: 'Wynwood Ventures LP' } },
+  },
+  {
+    id: 'T20',
+    ref: 'TR-0133',
+    received: '2026-09-10',
+    displayOverrides: { transfer: { transferor: 'Marguerite Shaw', transferee: 'Nikolai Petrov' } },
+  },
+  {
+    id: 'T17',
+    ref: 'TR-0141',
+    received: '2026-09-18',
+    displayOverrides: { transfer: { transferor: 'Felix Amara', transferee: 'Priyanka Rao' } },
+  },
+  {
+    id: 'T31',
+    ref: 'TR-0148',
+    received: '2026-09-10',
+    displayOverrides: { transfer: { transferee: 'Desmond Ola' } },
+  },
 ];
 
 const QUEUE_IDS = QUEUE_ROWS.map((r) => r.id);
@@ -63,7 +87,37 @@ const state = {
   // so leaving and returning to the page does not lose it.
   assuranceBreak: null,
   lastPhoneUrl: null,
+  // Chases logged against a request (waiting on the GP, Helion or the
+  // buyer). Session memory only, exactly like state.activity: a chase does
+  // not change any fact the engine reads, it only records that someone
+  // asked again.
+  chases: {},
+  // Counsel decisions logged against a request. Where the decision maps to
+  // a fact the engine already models, it is applied through applyOverride
+  // like any other evidence; otherwise it is recorded here only, and never
+  // changes the verdict.
+  counselDecisions: {},
+  // Register entries, keyed by request id, recorded only once a request
+  // reaches "ready for the GP to record" and the operator actions it. Kept
+  // for the session only, per the brief: this is not a new source of legal
+  // truth, just a preview and export of what the GP would record.
+  register: {},
+  // Signatures logged per request and signatory. Session memory; where a
+  // signatory's signing is also an engine fact (the buyer's Transfer and
+  // Adherence Agreement), logging it "signed" here also applies that fact
+  // through applyOverride, exactly like any other evidence.
+  signatures: {},
 };
+
+// The three signatories on the Transfer and Adherence Agreement. Only the
+// buyer's signature has a matching engine fact (buyer.adherence); the
+// seller's and the GP's signing are tracked here for the workflow but do
+// not feed any rule, since no rule in the rulebook keys off them.
+const SIGNATORIES = [
+  { key: 'seller', label: 'Seller' },
+  { key: 'buyer', label: 'Buyer', factPath: 'buyer.adherence', factDoneValue: 'signed' },
+  { key: 'gp', label: 'General Partner' },
+];
 
 // The four display statuses. They are read from the engine's verdict and
 // outstanding count, never decided here. Red is reserved for Blocked; there
@@ -74,9 +128,20 @@ const STATUS_TABS = [
   { key: 'lawyer', label: 'Lawyer' },
   { key: 'actions', label: 'Action needed' },
   { key: 'ready', label: 'Ready' },
+  { key: 'service', label: 'Past service level' },
 ];
 
-function statusOf(decision) {
+// Recording in the Register (LPA 8.5) is session state that never feeds
+// back into the engine, so the engine's own verdict for a recorded request
+// stays CHECKLIST_READY forever, correctly: the tool never claims the act
+// of recording as its own answer. What the operator sees, though, must
+// still say Recorded once it happens, everywhere a status is shown (the
+// banner, the queue row, the dashboard KPIs), which this optional id
+// parameter makes possible without touching the engine's own output.
+function statusOf(decision, id) {
+  if (id && state.register[id]) {
+    return { key: 'recorded', group: 4, short: 'Recorded', long: 'Recorded in the Register', badge: 'badge-ready' };
+  }
   if (decision.verdict === 'BLOCKED') {
     return { key: 'blocked', group: 0, short: 'Blocked', long: 'Blocked', badge: 'badge-blocked' };
   }
@@ -94,6 +159,55 @@ function statusOf(decision) {
     };
   }
   return { key: 'ready', group: 3, short: 'Ready to record', long: 'Ready for the GP to record', badge: 'badge-ready' };
+}
+
+// --- Lifecycle stage ------------------------------------------------------
+//
+// A request's stage is derived, never stored: it reads the same decision
+// the rest of the page reads, plus the signatures and register state logged
+// in this session. There is no separate "stage" fact anywhere, so a stage
+// can never drift from the answer that produced it.
+const STAGE_CONSENT_NOTICE_RULES = ['F-CONSENT', 'S-DEEMED-CONSENT', 'C-CONSENT', 'F-PERMITTED-NOTICE', 'C-PERMITTED-NOTICE', 'C-ROFR-NOTICE', 'C-ROFR-RESPONSE'];
+const STAGE_KYC_RULES = ['B-KYC', 'B-SANCTIONS', 'B-TAX-FORM', 'B-ADHERENCE'];
+
+function signaturesFor(id, facts) {
+  const logged = state.signatures[id] || {};
+  return SIGNATORIES.map((s) => ({
+    ...s,
+    state: logged[s.key] || (s.factPath && getPath(facts, s.factPath) === s.factDoneValue ? 'signed' : 'not_sent'),
+  }));
+}
+
+function stageFor(id, decision, facts) {
+  if (state.register[id]) return { key: 'register', label: 'Register updated' };
+  const status = statusOf(decision);
+  if (status.key === 'blocked' || status.key === 'lawyer') return { key: 'compliance', label: 'Compliance review' };
+  if (status.key === 'ready') {
+    const sigs = signaturesFor(id, facts);
+    if (sigs.every((s) => s.state === 'signed')) return { key: 'completion', label: 'Completion' };
+    return { key: 'signatures', label: 'Signatures' };
+  }
+  const outstanding = decision.results.filter((r) => r.state === 'OUTSTANDING').map((r) => r.rule_id);
+  if (outstanding.some((rid) => STAGE_CONSENT_NOTICE_RULES.includes(rid))) return { key: 'consents', label: 'Consents and notices' };
+  if (outstanding.length && outstanding.every((rid) => STAGE_KYC_RULES.includes(rid))) return { key: 'kyc', label: 'KYC and documents' };
+  return { key: 'intake', label: 'Intake' };
+}
+
+// Days the request has been open (received to as_of). Shown as the stage's
+// age rather than a true per-stage clock, since the demo does not log stage
+// transition timestamps; the queue and request page both say "open" for
+// this reason, not "in this stage".
+function daysOpen(receivedISO, asOfISO) {
+  const from = Date.UTC(...receivedISO.split('-').map(Number));
+  const to = Date.UTC(...asOfISO.split('-').map(Number));
+  return Math.round((to - from) / 86400000);
+}
+
+// A request is past its service level once it has an overdue next action:
+// the same dueDate the queue and Deadlines page already show, now flagged
+// once as_of has passed it.
+function pastServiceLevel(row, asOfISO) {
+  return Boolean(row.dueDate && row.dueDate < asOfISO);
 }
 
 function badge(status, extraClass) {
@@ -131,12 +245,26 @@ async function loadData() {
 
 // --- Routing --------------------------------------------------------------
 
+const REQUEST_TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'compliance', label: 'Compliance' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'signatures', label: 'Signatures' },
+  { key: 'activity', label: 'Activity' },
+];
+
 function parseHash() {
-  const m = location.hash.match(/^#\/request\/(.+)$/);
-  if (m) return { view: 'request', id: decodeURIComponent(m[1]) };
+  const m = location.hash.match(/^#\/request\/([^/]+)(?:\/([a-z]+))?$/);
+  if (m) {
+    const tab = REQUEST_TABS.some((t) => t.key === m[2]) ? m[2] : 'overview';
+    return { view: 'request', id: decodeURIComponent(m[1]), tab };
+  }
   if (location.hash === '#/new') return { view: 'new', id: 'NEW' };
   if (location.hash === '#/deadlines') return { view: 'deadlines' };
   if (location.hash === '#/assurance') return { view: 'assurance' };
+  if (location.hash === '#/playbook') return { view: 'playbook' };
+  if (location.hash === '#/chase') return { view: 'chase' };
+  if (location.hash === '#/counsel') return { view: 'counsel' };
   return { view: 'queue' };
 }
 
@@ -155,6 +283,34 @@ function startNewRequestWizard() {
   state.requestOverrides.NEW = JSON.parse(JSON.stringify(NEW_INTAKE_OVERRIDES));
   state.activity.NEW = [];
   navigate('#/new');
+}
+
+// The next reference in sequence, one past the highest TR-01xx already on
+// the queue (including requests created earlier this session), so a new
+// request reads like it was actually opened by the desk, not a demo id.
+function nextQueueRef() {
+  const max = QUEUE_ROWS.reduce((m, r) => Math.max(m, Number((r.ref || '').replace(/\D/g, '')) || 0), 0);
+  return `TR-${max + 1}`;
+}
+
+// Turns the wizard's in-progress facts into a real queue row: a new id, a
+// reference and a received date, appended to the same QUEUE_ROWS array
+// every other view reads, so the dashboard, the stage tracker and the
+// chase and counsel queues all see it immediately, exactly like any other
+// request. Session only, like every other piece of state here.
+function createRequestFromWizard() {
+  const facts = factsForId('NEW');
+  const id = `NEW-${QUEUE_ROWS.length + 1}`;
+  const ref = nextQueueRef();
+  QUEUE_ROWS.push({ id, ref, received: facts.as_of });
+  QUEUE_IDS.push(id);
+  QUEUE_META[id] = { ref, received: facts.as_of };
+  state.requestOverrides[id] = state.requestOverrides.NEW;
+  state.activity[id] = state.activity.NEW || [];
+  delete state.requestOverrides.NEW;
+  delete state.activity.NEW;
+  state.wizard = null;
+  return id;
 }
 
 function navigate(hash) {
@@ -320,11 +476,12 @@ function daysAwayText(fromISO, toISO) {
 
 function queueRowFor(id) {
   const { facts, decision } = decisionForId(id);
-  const status = statusOf(decision);
+  const status = statusOf(decision, id);
 
   const whatMatters = queueWording(firstSentence(humanize(decision.headline)));
   const dueDate = (nextActionOf(decision) || {}).due || null;
   const meta = QUEUE_META[id];
+  const stage = stageFor(id, decision, facts);
 
   return {
     id,
@@ -337,6 +494,9 @@ function queueRowFor(id) {
     whatMatters,
     completion: facts.transfer.proposed_completion,
     completionAway: daysAwayText(facts.as_of, facts.transfer.proposed_completion),
+    stage,
+    daysOpen: daysOpen(meta.received, facts.as_of),
+    pastServiceLevel: pastServiceLevel({ dueDate }, facts.as_of),
   };
 }
 
@@ -428,22 +588,90 @@ function renderDueWeekStrip(allRows) {
   }
 }
 
+// Six headline figures for the desk, the same shape a fund operations lead
+// would expect at the top of a transfer queue. Every number is derived from
+// the same rows and due dates the table below reads; nothing here is a new
+// fact or a separate source of truth.
+function renderKpiRow(allRows) {
+  const asOf = DATA.baseFacts.as_of;
+  const toDays = (fromISO, toISO) => Math.round((Date.UTC(...toISO.split('-').map(Number)) - Date.UTC(...fromISO.split('-').map(Number))) / 86400000);
+
+  // A recorded request (LPA 8.5) is finished: it stays visible in the queue
+  // for the record, but it is no longer open work, so it drops out of every
+  // one of these figures the way a closed matter would drop out of a live
+  // caseload count.
+  const openRows = allRows.filter((r) => r.status.key !== 'recorded');
+  const open = openRows.length;
+  const blocked = openRows.filter((r) => r.status.key === 'blocked').length;
+  const withCounsel = openRows.filter((r) => r.status.key === 'lawyer').length;
+  const completingThisWeek = openRows.filter((r) => toDays(asOf, r.completion) >= 0 && toDays(asOf, r.completion) <= 7).length;
+  const avgDaysOpen = open ? Math.round(openRows.reduce((sum, r) => sum + toDays(r.received, asOf), 0) / open) : 0;
+  const pastServiceLevel = openRows.filter((r) => r.dueDate && toDays(r.dueDate, asOf) > 0).length;
+
+  const kpis = [
+    { label: 'Open transfers', value: String(open) },
+    { label: 'Blocked', value: String(blocked) },
+    { label: 'With counsel', value: String(withCounsel) },
+    { label: 'Completing in 7 days', value: String(completingThisWeek) },
+    { label: 'Average days open', value: String(avgDaysOpen) },
+    { label: 'Past service level', value: String(pastServiceLevel) },
+  ];
+
+  const KPI_QUEUE_TAB = { Blocked: 'blocked', 'With counsel': 'lawyer', 'Past service level': 'service' };
+  const KPI_CAPTION = {};
+
+  const row = document.getElementById('kpi-row');
+  row.innerHTML = '';
+  for (const kpi of kpis) {
+    const item = el('div', 'kpi-item');
+    item.appendChild(el('dt', 'kpi-label', kpi.label));
+    const valueClass = `kpi-value${kpi.label === 'Blocked' && blocked > 0 ? ' kpi-value-blocked' : ''}${kpi.label === 'Past service level' && pastServiceLevel > 0 ? ' kpi-value-flag' : ''}`;
+    const targetTab = KPI_QUEUE_TAB[kpi.label];
+    const dd = el('dd', valueClass);
+    if (targetTab && Number(kpi.value) > 0) {
+      const btn = el('button', 'kpi-value-link', kpi.value);
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        state.queueTab = targetTab;
+        renderQueue();
+        document.querySelector(`#queue-tabs [data-tab="${targetTab}"]`)?.focus();
+      });
+      dd.appendChild(btn);
+    } else {
+      dd.textContent = kpi.value;
+    }
+    item.appendChild(dd);
+    if (KPI_CAPTION[kpi.label]) item.appendChild(el('p', 'kpi-caption', KPI_CAPTION[kpi.label]));
+    row.appendChild(item);
+  }
+}
+
 function renderQueue() {
   const allRows = QUEUE_ROWS.map((r) => r.id).map(queueRowFor).sort(compareRows);
+  renderKpiRow(allRows);
   renderDueWeekStrip(allRows);
   const searched = allRows.filter((r) => rowMatchesQuery(r, state.queueQuery));
 
-  const counts = { all: searched.length, blocked: 0, lawyer: 0, actions: 0, ready: 0 };
-  for (const r of searched) counts[r.status.key]++;
-  const totals = { blocked: 0, lawyer: 0, actions: 0, ready: 0 };
+  const counts = { all: searched.length, blocked: 0, lawyer: 0, actions: 0, ready: 0, service: 0 };
+  for (const r of searched) {
+    counts[r.status.key]++;
+    if (r.pastServiceLevel) counts.service++;
+  }
+  const totals = { blocked: 0, lawyer: 0, actions: 0, ready: 0, recorded: 0 };
   for (const r of allRows) totals[r.status.key]++;
+  const openCount = allRows.length - totals.recorded;
 
   document.getElementById('queue-summary').textContent =
-    `${allRows.length} open requests · ${totals.blocked} blocked · ${totals.lawyer} with a lawyer · ${totals.actions} with actions outstanding · ${totals.ready} ready to record`;
+    `${openCount} open requests · ${totals.blocked} blocked · ${totals.lawyer} with a lawyer · ${totals.actions} with actions outstanding · ${totals.ready} ready to record${totals.recorded ? ` · ${totals.recorded} recorded` : ''}`;
 
   renderQueueTabs(counts);
 
-  const rows = state.queueTab === 'all' ? searched : searched.filter((r) => r.status.key === state.queueTab);
+  const rows =
+    state.queueTab === 'all'
+      ? searched
+      : state.queueTab === 'service'
+        ? searched.filter((r) => r.pastServiceLevel)
+        : searched.filter((r) => r.status.key === state.queueTab);
   document.getElementById('queue-empty').hidden = rows.length > 0;
   document.getElementById('queue-table').hidden = rows.length === 0;
 
@@ -464,6 +692,11 @@ function renderQueue() {
     metaLine.appendChild(el('span', 'queue-ref', row.ref));
     metaLine.appendChild(document.createTextNode(` · received ${shortReadable(row.received)}`));
     requestCell.appendChild(metaLine);
+    const stageLine = el('div', 'queue-stage');
+    stageLine.appendChild(el('span', null, row.stage.label));
+    stageLine.appendChild(document.createTextNode(` · ${row.daysOpen} day${row.daysOpen === 1 ? '' : 's'} open`));
+    if (row.pastServiceLevel) stageLine.appendChild(el('span', 'queue-stage-flag', 'Past service level'));
+    requestCell.appendChild(stageLine);
     tr.appendChild(requestCell);
 
     const statusCell = el('td', 'queue-status');
@@ -495,6 +728,7 @@ function renderQueue() {
     btn.appendChild(el('span', 'queue-row-mobile-matters', row.whatMatters));
     const meta = el('span', 'queue-row-mobile-meta');
     meta.appendChild(el('span', 'queue-ref', row.ref));
+    meta.appendChild(el('span', null, `${row.stage.label} · ${row.daysOpen}d open`));
     meta.appendChild(el('span', null, `Completes ${shortReadable(row.completion)}, ${row.completionAway}`));
     if (row.dueDate) meta.appendChild(el('span', 'due', `Next due ${shortReadable(row.dueDate)}`));
     btn.appendChild(meta);
@@ -576,6 +810,164 @@ function renderDeadlines() {
   }
 }
 
+// --- Chase list -----------------------------------------------------------
+
+function renderChaseView() {
+  const items = computeChaseItems();
+  document.getElementById('chase-summary').textContent =
+    items.length === 0 ? 'Nothing is waiting on the GP, Helion or the buyer right now.' : `${items.length} item${items.length === 1 ? '' : 's'} waiting on someone else, longest first.`;
+  document.getElementById('chase-table').hidden = items.length === 0;
+  document.getElementById('chase-empty').hidden = items.length > 0;
+
+  // Context for why the list is short: most of the queue has not asked
+  // yet, so there is nothing to chase there, only a next action of Ops's
+  // own (shown on the request itself and the queue, not here).
+  const ownAction = computeOwnActionRequests();
+  const note = document.getElementById('chase-not-asked');
+  if (ownAction.length === 0) {
+    note.hidden = true;
+  } else {
+    note.hidden = false;
+    note.innerHTML = '';
+    note.appendChild(document.createTextNode(
+      `${ownAction.length} other request${ownAction.length === 1 ? '' : 's'} in the queue ${ownAction.length === 1 ? 'has' : 'have'} an outstanding step that Ops has not asked for yet, so there is nothing to chase there until it does: `,
+    ));
+    ownAction.forEach((r, i) => {
+      const link = document.createElement('a');
+      link.href = `#/request/${r.id}`;
+      link.textContent = r.ref;
+      note.appendChild(link);
+      if (i < ownAction.length - 1) note.appendChild(document.createTextNode(', '));
+    });
+    note.appendChild(document.createTextNode('.'));
+  }
+
+  const tbody = document.getElementById('chase-table-body');
+  tbody.innerHTML = '';
+  const mobileList = document.getElementById('chase-list-mobile');
+  mobileList.innerHTML = '';
+
+  for (const item of items) {
+    const tr = document.createElement('tr');
+    tr.className = 'queue-row';
+
+    const requestCell = el('td');
+    requestCell.appendChild(el('div', 'queue-parties', item.sellerBuyer));
+    const metaLine = el('div', 'queue-meta');
+    metaLine.appendChild(el('span', 'queue-ref', item.ref));
+    requestCell.appendChild(metaLine);
+    tr.appendChild(requestCell);
+
+    tr.appendChild(el('td', null, `Waiting on ${item.party} for ${item.thing}`));
+    tr.appendChild(el('td', null, `${item.days} day${item.days === 1 ? '' : 's'}${item.chasedCount ? ` · chased ${item.chasedCount}×` : ''}`));
+
+    const actionCell = document.createElement('td');
+    const openBtn = el('button', 'btn btn-ghost btn-sm', 'Open');
+    openBtn.type = 'button';
+    openBtn.addEventListener('click', () => navigate(`#/request/${item.id}`));
+    const chaseBtn = el('button', 'btn btn-secondary btn-sm', 'Log chase');
+    chaseBtn.type = 'button';
+    chaseBtn.addEventListener('click', () => {
+      logChase(item.id, item.ruleId, item.party, item.thing);
+      renderChaseView();
+    });
+    actionCell.appendChild(openBtn);
+    actionCell.appendChild(chaseBtn);
+    tr.appendChild(actionCell);
+    tbody.appendChild(tr);
+
+    const li = document.createElement('li');
+    const wrap = el('div', 'queue-row-mobile');
+    wrap.appendChild(el('span', 'queue-row-mobile-top', item.sellerBuyer));
+    wrap.appendChild(el('span', 'queue-row-mobile-matters', `Waiting on ${item.party} for ${item.thing} · ${item.days}d`));
+    const mobileActions = el('span', 'signature-actions');
+    const mOpen = el('button', 'btn btn-ghost btn-sm', 'Open');
+    mOpen.type = 'button';
+    mOpen.addEventListener('click', () => navigate(`#/request/${item.id}`));
+    const mChase = el('button', 'btn btn-secondary btn-sm', 'Log chase');
+    mChase.type = 'button';
+    mChase.addEventListener('click', () => {
+      logChase(item.id, item.ruleId, item.party, item.thing);
+      renderChaseView();
+    });
+    mobileActions.appendChild(mOpen);
+    mobileActions.appendChild(mChase);
+    wrap.appendChild(mobileActions);
+    li.appendChild(wrap);
+    mobileList.appendChild(li);
+  }
+}
+
+// --- Counsel review ---------------------------------------------------
+
+function renderCounselView() {
+  const items = computeCounselItems();
+  document.getElementById('counsel-summary').textContent =
+    items.length === 0 ? 'Nothing is waiting on a lawyer right now.' : `${items.length} request${items.length === 1 ? '' : 's'} at lawyer review.`;
+
+  const body = document.getElementById('counsel-body');
+  body.innerHTML = '';
+  document.getElementById('counsel-empty').hidden = items.length > 0;
+
+  for (const item of items) {
+    const card = el('div', 'card card-pad counsel-item');
+    const head = el('div', 'counsel-item-head');
+    head.appendChild(el('h3', 'counsel-item-title', item.sellerBuyer));
+    const openLink = el('a', 'footer-link', 'Open request');
+    openLink.href = `#/request/${item.id}`;
+    head.appendChild(openLink);
+    card.appendChild(head);
+    card.appendChild(el('p', 'queue-meta', item.ref));
+
+    card.appendChild(el('p', null, ensureSentence(queueWording(humanize(item.result.reason)))));
+
+    if (item.result.citations && item.result.citations.length) {
+      const cites = el('div', 'playbook-citations');
+      for (const c of item.result.citations) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'playbook-citation';
+        btn.textContent = formatCitation(c);
+        btn.addEventListener('click', () => openDocViewer(c.doc, c.section));
+        cites.appendChild(btn);
+      }
+      card.appendChild(cites);
+    }
+
+    const decisionsRow = el('div', 'counsel-decisions');
+    if (item.options.length) {
+      for (const option of item.options) {
+        const btn = el('button', 'btn btn-secondary btn-sm', option.label);
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+          recordCounselDecision(item.id, item.rule.id, option);
+          renderCounselView();
+        });
+        decisionsRow.appendChild(btn);
+      }
+    } else {
+      const btn = el('button', 'btn btn-ghost btn-sm', 'Log counsel note');
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        logOnly(item.id, `Counsel review logged for ${item.rule.title}`, 'Logged only. This point needs a legal judgement the desk cannot resolve from a fact.');
+        renderCounselView();
+      });
+      decisionsRow.appendChild(btn);
+      decisionsRow.appendChild(el('span', 'item-hint', 'No fact in the schema resolves this alone; recorded as a note only.'));
+    }
+    card.appendChild(decisionsRow);
+
+    const decided = state.counselDecisions[item.id] || [];
+    if (decided.length) {
+      const log = el('ul', 'counsel-log');
+      for (const d of decided) log.appendChild(el('li', null, `${d.label} · ${Dates.formatReadable(d.at)}`));
+      card.appendChild(log);
+    }
+
+    body.appendChild(card);
+  }
+}
+
 // --- New request wizard ---------------------------------------------------
 //
 // Three steps, ending on the request page for id "NEW": parties and terms,
@@ -626,8 +1018,9 @@ function renderWizardActions(facts) {
     const create = el('button', 'btn btn-primary', 'Create request');
     create.type = 'button';
     create.addEventListener('click', () => {
+      const id = createRequestFromWizard();
       showToast(`Request created: ${facts.transfer.transferor} → ${facts.transfer.transferee}`, false);
-      navigate('#/request/NEW');
+      navigate(`#/request/${id}`);
     });
     wrap.appendChild(create);
   }
@@ -692,8 +1085,13 @@ function renderWizard() {
 // action, goes through here: merge the change into this request's session
 // overrides, then re-render, which re-runs Engine.evaluate(). The activity
 // entry records the answer before and after, both read from the engine.
-function applyOverride(overrideObj, logText) {
-  const id = state.route.id;
+// explicitId lets a caller outside a request page (the Counsel review queue
+// lists items from several requests at once, none of which is "the current
+// request") say exactly which request the change applies to; every other
+// caller runs from inside a request page, where state.route.id already
+// names it correctly.
+function applyOverride(overrideObj, logText, explicitId) {
+  const id = explicitId || state.route.id;
   const before = statusOf(decisionForId(id).decision);
   const previous = state.requestOverrides[id];
   state.requestOverrides[id] = Engine.deepMergeFacts(previous || {}, overrideObj);
@@ -808,6 +1206,265 @@ function runLoggedAction(action) {
   showToast(`${action.log}. Now: ${lowerFirst(after.long)}.`, true);
 }
 
+// A log-only entry: records something happened (a chase, a counsel note)
+// without touching any fact the engine reads. Used whenever there is no
+// fact in the schema that the event maps to, so the verdict cannot move.
+function logOnly(id, text, meta) {
+  (state.activity[id] = state.activity[id] || []).unshift({ text, meta: meta || 'Logged only. Does not change the answer.' });
+  render();
+}
+
+// --- Signatures -------------------------------------------------------
+//
+// Blocked transfers never reach signature. The wizard and the request page
+// only offer these actions once the answer is not BLOCKED, matching the
+// operator's real workflow: nobody signs on a transfer that cannot proceed.
+
+function setSignatureState(id, key, newState, facts) {
+  const signatory = SIGNATORIES.find((s) => s.key === key);
+  const day = Dates.formatReadable(facts.as_of);
+  const verb = newState === 'sent' ? 'sent for signature' : 'signed';
+  if (signatory.factPath && newState === 'signed') {
+    const label = `${signatory.label}'s signature on the Transfer and Adherence Agreement logged as received on ${day}`;
+    applyOverride(nestOverride(signatory.factPath, signatory.factDoneValue), label);
+    const rec = (state.signatures[id] = state.signatures[id] || {});
+    rec[key] = newState;
+    return;
+  }
+  const rec = (state.signatures[id] = state.signatures[id] || {});
+  rec[key] = newState;
+  logOnly(id, `${signatory.label}'s copy of the Transfer and Adherence Agreement logged as ${verb} on ${day}`, 'Tracked for the signing workflow; no rule reads a seller or GP signature.');
+}
+
+// --- Chase list -------------------------------------------------------
+//
+// Every outstanding item across every request that is waiting on someone
+// else to respond, not on Ops to act. Read straight off the same decisions
+// and due dates the queue and Deadlines page use; a chase never changes a
+// fact, it only records that Ops asked again.
+const CHASE_RULES = {
+  'F-CONSENT': { party: 'the GP', thing: "the GP's consent", timestampPath: 'fund.gp_consent.requested_at' },
+  'S-DEEMED-CONSENT': { party: 'the GP', thing: "the GP's consent", timestampPath: 'fund.gp_consent.requested_at' },
+  'C-CONSENT': { party: 'Helion', thing: "Helion's consent", timestampPath: 'company.consent.requested_at' },
+  'C-ROFR-RESPONSE': { party: 'Helion', thing: 'a response to the Transfer Notice', timestampPath: 'company.rofr_notice.sent_at' },
+  'B-KYC': { party: 'the buyer', thing: 'KYC and AML checks', timestampPath: null },
+  'B-SANCTIONS': { party: 'the buyer', thing: 'sanctions screening', timestampPath: null },
+  'B-TAX-FORM': { party: 'the buyer', thing: 'the tax form', timestampPath: null },
+  'B-ADHERENCE': { party: 'the buyer', thing: 'the signed Transfer and Adherence Agreement', timestampPath: null },
+};
+
+function chaseAgeDays(row, meta, asOfISO) {
+  const from = meta.timestampPath ? getPath(row.facts, meta.timestampPath) : null;
+  const fromDate = from ? from.slice(0, 10) : row.received;
+  return daysOpen(fromDate, asOfISO);
+}
+
+function computeChaseItems() {
+  const asOf = DATA.baseFacts.as_of;
+  const items = [];
+  for (const meta of QUEUE_ROWS) {
+    const { facts, decision } = decisionForId(meta.id);
+    // Only rules that have already been requested/sent count as "waiting on
+    // someone else"; a rule that is OUTSTANDING because Ops has not yet
+    // acted (for example not_requested) is Ops's own next action, not a
+    // chase.
+    for (const r of decision.results) {
+      if (r.state !== 'OUTSTANDING') continue;
+      const ruleMeta = CHASE_RULES[r.rule_id];
+      if (!ruleMeta) continue;
+      const waiting =
+        r.rule_id === 'F-CONSENT' || r.rule_id === 'S-DEEMED-CONSENT'
+          ? facts.fund.gp_consent.status === 'requested'
+          : r.rule_id === 'C-CONSENT'
+            ? facts.company.consent.status === 'requested'
+            : r.rule_id === 'C-ROFR-RESPONSE'
+              ? facts.company.rofr_notice.status === 'delivered' && facts.company.rofr_response.status === 'none'
+              : true;
+      if (!waiting) continue;
+      items.push({
+        id: meta.id,
+        ref: meta.ref,
+        sellerBuyer: `${facts.transfer.transferor} → ${facts.transfer.transferee}`,
+        ruleId: r.rule_id,
+        party: ruleMeta.party,
+        thing: ruleMeta.thing,
+        days: chaseAgeDays({ facts, received: meta.received }, ruleMeta, asOf),
+        chasedCount: ((state.chases[meta.id] || {})[r.rule_id] || []).length,
+      });
+    }
+  }
+  return items.sort((a, b) => b.days - a.days);
+}
+
+// Requests that have an OUTSTANDING rule waiting on a third party, but
+// where the request itself has not yet gone out (for example
+// not_requested or not_sent). These are Ops's own next action, not a
+// chase, so they never appear as chase rows; this is read alongside the
+// chase table so a short list never reads as broken or empty when most of
+// the queue simply has not reached "asked and waiting" yet.
+function computeOwnActionRequests() {
+  const seen = new Map();
+  for (const meta of QUEUE_ROWS) {
+    const { facts, decision } = decisionForId(meta.id);
+    for (const r of decision.results) {
+      if (r.state !== 'OUTSTANDING') continue;
+      if (!CHASE_RULES[r.rule_id]) continue;
+      const waiting =
+        r.rule_id === 'F-CONSENT' || r.rule_id === 'S-DEEMED-CONSENT'
+          ? facts.fund.gp_consent.status === 'requested'
+          : r.rule_id === 'C-CONSENT'
+            ? facts.company.consent.status === 'requested'
+            : r.rule_id === 'C-ROFR-RESPONSE'
+              ? facts.company.rofr_notice.status === 'delivered' && facts.company.rofr_response.status === 'none'
+              : true;
+      if (waiting) continue;
+      if (!seen.has(meta.id)) seen.set(meta.id, { id: meta.id, ref: meta.ref, sellerBuyer: `${facts.transfer.transferor} → ${facts.transfer.transferee}` });
+    }
+  }
+  return Array.from(seen.values());
+}
+
+function logChase(id, ruleId, party, thing) {
+  const facts = factsForId(id);
+  const day = Dates.formatReadable(facts.as_of);
+  const rec = (state.chases[id] = state.chases[id] || {});
+  (rec[ruleId] = rec[ruleId] || []).push(facts.as_of);
+  logOnly(id, `Chased ${party} for ${thing} on ${day}`, 'Logged only. Does not change the answer.');
+  showToast(`Chase logged for ${party}.`, false);
+}
+
+// --- Counsel review -----------------------------------------------------
+//
+// Every request currently at "lawyer review", with the uncertain rule that
+// put it there and, where the rulebook models a real answer to that
+// uncertainty as a fact, the fact changes counsel can confirm. Anything
+// else is recorded as a note only: the brief for this desk is explicit
+// that an operator's or a lawyer's say-so never overrides the verdict, only
+// evidence the engine already understands does.
+function counselOptionsFor(ruleId, facts) {
+  const at = `${facts.as_of}T10:00`;
+  switch (ruleId) {
+    case 'C-CONSENT':
+      return [
+        { label: 'Confirm written consent was received', override: { company: { consent: { status: 'received', received_at: at } } } },
+        { label: 'Confirm consent was refused', override: { company: { consent: { status: 'refused' } } } },
+      ];
+    case 'F-CONSENT':
+      return [
+        { label: "Confirm the GP's written consent was received", override: { fund: { gp_consent: { ...facts.fund.gp_consent, status: 'received', received_at: at } } } },
+        { label: 'Confirm the GP refused consent', override: { fund: { gp_consent: { ...facts.fund.gp_consent, status: 'refused' } } } },
+      ];
+    case 'S-DEEMED-CONSENT':
+      return [
+        { label: 'Confirm the request to the GP was complete', override: { fund: { gp_consent: { ...facts.fund.gp_consent, complete: 'yes' } } } },
+        { label: 'Confirm the request to the GP was incomplete', override: { fund: { gp_consent: { ...facts.fund.gp_consent, complete: 'no' } } } },
+      ];
+    case 'X-VERSION':
+      return [{ label: 'Confirm the evidence matches the current document version', override: { documents_version_confirmed: 'yes' } }];
+    case 'F-BO-LIMIT':
+      return [{ label: 'Confirm the current beneficial owner count with the GP', override: null, note: 'Needs a number from the GP; not a yes or no counsel can confirm alone.' }];
+    default:
+      return [];
+  }
+}
+
+function computeCounselItems() {
+  const ruleMap = new Map(DATA.rulebook.rules.map((r) => [r.id, r]));
+  const items = [];
+  for (const meta of QUEUE_ROWS) {
+    const { facts, decision } = decisionForId(meta.id);
+    if (decision.verdict !== 'ESCALATE') continue;
+    const r = decision.results.find((r) => r.state === 'UNKNOWN' || r.state === 'CONTRADICTORY');
+    if (!r) continue;
+    items.push({
+      id: meta.id,
+      ref: meta.ref,
+      sellerBuyer: `${facts.transfer.transferor} → ${facts.transfer.transferee}`,
+      rule: ruleMap.get(r.rule_id),
+      result: r,
+      options: counselOptionsFor(r.rule_id, facts).filter((o) => o.override),
+    });
+  }
+  return items;
+}
+
+function recordCounselDecision(id, ruleId, option) {
+  const facts = factsForId(id);
+  const day = Dates.formatReadable(facts.as_of);
+  applyOverride(option.override, `Counsel decision logged: ${lowerFirst(option.label)} (${day})`, id);
+  (state.counselDecisions[id] = state.counselDecisions[id] || []).push({ ruleId, label: option.label, at: facts.as_of });
+}
+
+// --- Register update ---------------------------------------------------
+//
+// Available only once a request is ready for the GP to record, i.e. verdict
+// CHECKLIST_READY with nothing outstanding: the same state the queue and
+// request page already show as "Ready to record". Recording here does not
+// feed back into the engine; LPA 8.5 makes this a human act, not a rule.
+function registerPreview(facts) {
+  const t = facts.transfer;
+  const total = t.transferor_capital_contribution;
+  const moved = Math.round(total * Math.min(t.fraction, 1));
+  const retained = Math.round(total - moved);
+  return {
+    effectiveDate: facts.as_of,
+    rows: [
+      { party: t.transferor, role: 'Transferor', before: total, after: t.fraction >= 1 ? 0 : retained },
+      { party: t.transferee, role: 'Transferee', before: 0, after: moved },
+    ],
+    amountMoved: moved,
+  };
+}
+
+function recordInRegister(id) {
+  const facts = factsForId(id);
+  const preview = registerPreview(facts);
+  state.register[id] = { at: facts.as_of, preview };
+  const day = Dates.formatReadable(facts.as_of);
+  (state.activity[id] = state.activity[id] || []).unshift({
+    text: `Recorded in the Register on ${day} (LPA 8.5)`,
+    meta: `US$${preview.amountMoved.toLocaleString('en-US')} of Capital Contribution moved from ${facts.transfer.transferor} to ${facts.transfer.transferee}`,
+  });
+  showToast('Recorded in the Register.', false);
+  render();
+}
+
+function registerRecordAsJson(id, facts, preview) {
+  const meta = QUEUE_META[id] || {};
+  return JSON.stringify(
+    {
+      reference: meta.ref || id,
+      transferor: facts.transfer.transferor,
+      transferee: facts.transfer.transferee,
+      effective_date: preview.effectiveDate,
+      capital_contribution_moved: preview.amountMoved,
+      holdings: preview.rows,
+      recorded_under: 'LPA 8.5',
+    },
+    null,
+    2,
+  );
+}
+
+function registerRecordAsCsv(id, facts, preview) {
+  const meta = QUEUE_META[id] || {};
+  const header = 'reference,party,role,before,after,effective_date';
+  const lines = preview.rows.map((r) => `${meta.ref || id},${r.party},${r.role},${r.before},${r.after},${preview.effectiveDate}`);
+  return [header, ...lines].join('\n');
+}
+
+function downloadFile(filename, contents, mime) {
+  const blob = new Blob([contents], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 // --- Deterministic drafts -------------------------------------------------
 //
 // Plain text built from the same facts the engine reads, with no model in
@@ -835,7 +1492,122 @@ function draftFor(ruleId, facts) {
       body: `To the Board of Directors of Helion Robotics, Inc.\n\nRe: Transfer Notice under section 4.1 of the Stockholders' Agreement\n\n${seller} gives notice of a proposed Transfer of ${fraction} its interest (Capital Contribution ${contribution}) in Northgate Helion SPV LP to ${buyer}, with completion proposed for ${completion}.\n\nThis notice is given under section 4.1 of the Stockholders' Agreement and offers the Company the right of first refusal described in section 4.2. The exercise period runs from the Company's receipt of this notice. Please acknowledge receipt.\n\nDated ${today}.`,
     };
   }
+  if (ruleId === 'B-KYC' && facts.buyer.kyc !== 'cleared') {
+    return {
+      title: 'Draft AML/KYC comfort letter request',
+      citation: 'LPA 8.4(b)',
+      body: `To the compliance contact for ${buyer}\n\nRe: Know-your-customer confirmation for a proposed Transfer of an interest in Northgate Helion SPV LP\n\n${buyer} is the proposed transferee of ${fraction} the interest held by ${seller} (Capital Contribution ${contribution}), with completion proposed for ${completion}.\n\nUnder section 8.4(b) of the Limited Partnership Agreement, the General Partner's consent is conditioned on completion of know-your-customer and anti-money-laundering checks and clearance of sanctions screening on the transferee. We ask that ${buyer} provide a comfort letter, or supporting documentation, confirming its KYC/AML status, or complete the outstanding checks directly with the fund administrator.\n\nDated ${today}.`,
+    };
+  }
+  if (ruleId === 'B-TAX-FORM' && facts.buyer.tax_form === 'outstanding') {
+    return {
+      title: 'Draft tax form checklist',
+      citation: 'LPA 8.4(c)',
+      body: `To ${buyer}\n\nRe: Tax documentation required before completion of a proposed Transfer\n\nBefore the General Partner can give effect to the proposed Transfer of ${fraction} the interest held by ${seller} in Northgate Helion SPV LP (completion proposed for ${completion}), the transferee must provide a properly completed US tax form appropriate to its status, under section 8.4(c) of the Limited Partnership Agreement.\n\nChecklist:\n - Confirm whether the transferee is a US person or a non-US person for US tax purposes\n - If a US person, complete and sign Form W-9\n - If a non-US person, complete and sign the applicable Form W-8 (W-8BEN for an individual, W-8BEN-E or W-8IMY for an entity)\n - Return the signed form to the fund administrator before completion\n\nDated ${today}.`,
+    };
+  }
   return null;
+}
+
+// Every draft type the Documents tab knows how to build, in the order they
+// are offered. Each entry names the rule it answers so the panel can show
+// why a draft is or is not currently needed, using the same draftFor logic
+// the Next actions checklist already relies on, so there is only one place
+// that generates draft text.
+const DOCUMENT_DRAFT_RULES = [
+  { ruleId: 'C-CONSENT', neededLabel: "Helion's written consent has not been requested or received yet." },
+  { ruleId: 'C-ROFR-NOTICE', neededLabel: 'The Transfer Notice has not been served yet.' },
+  { ruleId: 'B-KYC', neededLabel: "The buyer's KYC/AML clearance is not confirmed yet." },
+  { ruleId: 'B-TAX-FORM', neededLabel: "The buyer's tax form is outstanding." },
+];
+
+// The Transfer and Adherence Agreement itself: the document the Signatures
+// tab tracks signing of, but which the Documents tab never actually showed
+// before this round. Built from the same facts as every other draft, with
+// each signature block carrying whatever this session has logged on the
+// Signatures tab, so the two tabs describe one document, not two. Not
+// offered on a blocked transfer, matching when Signatures itself opens.
+function agreementDraftFor(id, facts) {
+  const seller = facts.transfer.transferor;
+  const buyer = facts.transfer.transferee;
+  const contribution = `US$${facts.transfer.transferor_capital_contribution.toLocaleString('en-US')}`;
+  const fraction = facts.transfer.fraction < 1 ? `${Math.round(facts.transfer.fraction * 100)}% of` : 'the whole of';
+  const completion = Dates.formatReadable(facts.transfer.proposed_completion);
+  const today = Dates.formatReadable(facts.as_of);
+  const sigLine = (sig) => {
+    if (sig.state === 'signed') return `Signed (logged ${today})`;
+    if (sig.state === 'sent') return 'Sent for signature, not yet signed';
+    return 'Not yet sent';
+  };
+  const sigs = signaturesFor(id, facts);
+  const blocks = sigs
+    .map((sig) => {
+      const party = sig.key === 'seller' ? `TRANSFEROR\n${seller}` : sig.key === 'buyer' ? `TRANSFEREE\n${buyer}` : 'GENERAL PARTNER\nActing for Northgate Helion SPV LP';
+      return `${party}\nSignature: ________________________  Date: ________________\nStatus: ${sigLine(sig)}`;
+    })
+    .join('\n\n');
+  return {
+    title: 'Draft Transfer and Adherence Agreement',
+    citation: 'LPA 8.1, 8.4(a); SA 3.1',
+    body: `TRANSFER AND ADHERENCE AGREEMENT\n\nDated ${today}\n\nBetween the Transferor, the Transferee and the General Partner of Northgate Helion SPV LP.\n\n1. Transfer. The Transferor agrees to transfer to the Transferee ${fraction} its interest in the Partnership (Capital Contribution ${contribution}), with completion proposed for ${completion}, under section 8.1 of the Limited Partnership Agreement.\n\n2. Adherence. The Transferee agrees to adhere to and be bound by the Limited Partnership Agreement as if an original party, under section 8.4(a).\n\n3. Conditions. This Transfer remains subject to the General Partner's consent, the Company's consent and right of first refusal, and the other conditions on the compliance checklist for this request. Signing this agreement does not itself satisfy any of them.\n\n${blocks}`,
+  };
+}
+
+function documentDraftFilename(title) {
+  return `${title.toLowerCase().replace(/^draft\s+/, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}.txt`;
+}
+
+// Renders the Documents tab: one card per deterministic draft the facts on
+// this request currently call for. A draft only appears while the step it
+// answers is still outstanding, matching the Next actions checklist exactly
+// (both read draftFor), so the tab can never show a stale draft for a step
+// that is already done. When nothing is currently needed, a single quiet
+// line explains that, rather than leaving the tab looking broken or empty.
+function renderDocumentsPanel(id, decision, facts) {
+  const body = document.getElementById('documents-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  const cards = [];
+  if (decision.verdict !== 'BLOCKED') {
+    cards.push({ ruleId: 'AGREEMENT', draft: agreementDraftFor(id, facts) });
+  }
+  for (const { ruleId } of DOCUMENT_DRAFT_RULES) {
+    const draft = draftFor(ruleId, facts);
+    if (draft) cards.push({ ruleId, draft });
+  }
+
+  if (cards.length === 0) {
+    body.appendChild(el('p', 'queue-empty', 'No drafts are available. This transfer is blocked, so there is nothing to sign or send.'));
+    return;
+  }
+
+  for (const { draft } of cards) {
+    const card = el('div', 'card card-pad document-draft-card');
+    const head = el('div', 'draft-pane-head');
+    head.appendChild(el('h3', 'section-title section-title-bare', draft.title));
+    const actions = el('div', 'document-draft-actions');
+    const copyBtn = el('button', 'btn btn-ghost btn-sm', 'Copy');
+    copyBtn.type = 'button';
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(draft.body);
+        showToast('Draft copied to clipboard', false);
+      } catch (e) {
+        showToast('Could not copy. Select the text and copy it manually.', false);
+      }
+    });
+    const downloadBtn = el('button', 'btn btn-secondary btn-sm', 'Download .txt');
+    downloadBtn.type = 'button';
+    downloadBtn.addEventListener('click', () => downloadFile(documentDraftFilename(draft.title), draft.body, 'text/plain'));
+    actions.appendChild(copyBtn);
+    actions.appendChild(downloadBtn);
+    head.appendChild(actions);
+    card.appendChild(head);
+    card.appendChild(el('span', 'draft-pane-label', `Draft for review. Not legal advice. Cites ${draft.citation}.`));
+    card.appendChild(el('pre', 'draft-pane-body', draft.body));
+    body.appendChild(card);
+  }
 }
 
 function toggleDraftPane(container, draft) {
@@ -869,9 +1641,9 @@ function lowerFirst(text) {
 
 const BUYERS = [
   { name: 'Mira Chen', relationship: 'unrelated', competitor: 'no' },
-  { name: 'Kestrel Automation Ltd', relationship: 'unrelated', competitor: 'yes', note: "on Helion's competitor list" },
-  { name: 'Aldwych Angels II Ltd', relationship: 'affiliate', competitor: 'no', note: "the seller's affiliate" },
-  { name: 'Harbour Growth Fund II LP', relationship: 'harbour_transferee', competitor: 'no', note: 'a Harbour-managed fund' },
+  { name: 'Kestrel Automation Ltd', relationship: 'unrelated', competitor: 'yes', note: 'Helion competitor' },
+  { name: 'Aldwych Angels II Ltd', relationship: 'affiliate', competitor: 'no', note: "seller's affiliate" },
+  { name: 'Harbour Growth Fund II LP', relationship: 'harbour_transferee', competitor: 'no', note: 'Harbour-managed fund' },
 ];
 
 const SELLERS = ['Aldwych Angels Ltd', 'Priya Nair', 'Harbour Family Office LLC'];
@@ -1434,6 +2206,7 @@ const ANSWER_SUBLINES = {
   lawyer: 'Evidence is missing, unclear or conflicting. A lawyer decides before anything moves.',
   actions: 'Nothing blocks this transfer, but these steps must be completed before the GP can record it.',
   ready: 'Every condition is evidenced. Recording in the Register (LPA 8.5) is a human decision.',
+  recorded: 'The General Partner has recorded this transfer in the Register (LPA 8.5). Nothing further is outstanding.',
 };
 
 const GATE_STATUS_BADGE = {
@@ -1472,8 +2245,8 @@ function whatsWrongLabel(rule, result) {
   return (rule && rule.title) || 'Fails';
 }
 
-function renderAnswer(decision, ruleMap) {
-  const status = statusOf(decision);
+function renderAnswer(decision, ruleMap, id) {
+  const status = statusOf(decision, id);
   const headline = ensureSentence(queueWording(humanize(decision.headline)));
 
   const mobileVerdict = document.getElementById('mobile-verdict');
@@ -1569,19 +2342,44 @@ function renderWhy(decision, decidingId, ruleMap) {
     }
   }
 
-  if (decision.notes.length) {
+  // The SA 4.6 cross-cutting note ("consent and the right of first refusal
+  // are independent gates") is correctly generated by the engine whenever a
+  // sale reaches both rule families (CLAUDE.md section 6), even when neither
+  // is the rule that actually decided the answer, for example a Competitor
+  // block. It belongs in the full compliance list, but repeating it here
+  // under a rule it has nothing to do with reads as noise, so this card
+  // only shows it when the deciding rule is a consent or ROFR rule.
+  const RELEVANT_TO_4_6 = ['C-CONSENT', 'C-ROFR-NOTICE', 'C-ROFR-RESPONSE', 'C-ROFR-WINDOW', 'C-PERMITTED-NOTICE'];
+  const shownNotes = decision.notes.filter((n) => !n.includes('4.6') || RELEVANT_TO_4_6.includes(decidingId));
+
+  if (shownNotes.length) {
     const notes = el('ul', 'notes');
-    for (const n of decision.notes) notes.appendChild(el('li', null, n));
+    for (const n of shownNotes) notes.appendChild(el('li', null, n));
     container.appendChild(notes);
   }
 }
 
 // --- What happens next ------------------------------------------------
 
-function renderNext(decision, ruleMap) {
+function renderNext(decision, ruleMap, id) {
   const heading = document.getElementById('next-heading');
   const list = document.getElementById('next-list');
   list.innerHTML = '';
+
+  // Once recorded, the checklist this list was built from is finished: the
+  // engine's own last checklist item ("GP records the transfer...") is
+  // permanent, fixed legal-content wording (CLAUDE.md section 5) that
+  // always appears under a CHECKLIST_READY verdict whether or not anyone
+  // has actually recorded it yet, since the engine has no concept of
+  // "recorded". This UI-only branch is what tells the two states apart.
+  const recorded = id && state.register[id];
+  if (recorded) {
+    heading.textContent = 'Recorded';
+    const li = el('li', 'item-final');
+    li.appendChild(el('div', 'item-text', `Recorded in the Register on ${Dates.formatReadable(recorded.at)} (LPA 8.5). See the register update below.`));
+    list.appendChild(li);
+    return;
+  }
 
   if (decision.verdict === 'BLOCKED') {
     heading.textContent = 'What would change the answer';
@@ -1643,6 +2441,105 @@ function renderNext(decision, ruleMap) {
     }
     list.appendChild(li);
   }
+}
+
+// Signatures never appear for a blocked transfer: there is nothing to sign
+// on a transfer that cannot proceed. They appear once the answer is at
+// least "actions outstanding" (so evidence can be gathered in parallel with
+// signing) and stay visible once ready to record.
+function renderSignatures(id, decision, facts) {
+  const section = document.getElementById('signatures-section');
+  const empty = document.getElementById('signatures-empty');
+  if (decision.verdict === 'BLOCKED') {
+    section.hidden = true;
+    if (empty) empty.hidden = false;
+    return;
+  }
+  section.hidden = false;
+  if (empty) empty.hidden = true;
+  const viewLink = document.getElementById('signatures-view-agreement');
+  if (viewLink) viewLink.onclick = (e) => {
+    e.preventDefault();
+    navigate(`#/request/${id}/documents`);
+  };
+  const list = document.getElementById('signatures-list');
+  list.innerHTML = '';
+  for (const sig of signaturesFor(id, facts)) {
+    const li = el('li', 'signature-row');
+    li.appendChild(el('span', 'signature-name', sig.label));
+    const stateLabel = sig.state === 'signed' ? 'Signed' : sig.state === 'sent' ? 'Sent' : 'Not sent';
+    li.appendChild(el('span', `badge ${sig.state === 'signed' ? 'badge-ready' : sig.state === 'sent' ? 'badge-action' : 'badge-quiet'}`, stateLabel));
+    const actions = el('span', 'signature-actions');
+    if (sig.state === 'not_sent') {
+      const btn = el('button', 'btn btn-ghost btn-sm', 'Log sent');
+      btn.type = 'button';
+      btn.addEventListener('click', () => setSignatureState(id, sig.key, 'sent', facts));
+      actions.appendChild(btn);
+    }
+    if (sig.state !== 'signed') {
+      const btn = el('button', 'btn btn-ghost btn-sm', 'Log signed');
+      btn.type = 'button';
+      btn.addEventListener('click', () => setSignatureState(id, sig.key, 'signed', facts));
+      actions.appendChild(btn);
+    }
+    li.appendChild(actions);
+    list.appendChild(li);
+  }
+}
+
+// The register card only ever shows one action at a time: record, or the
+// preview and export of what was just recorded. "Record in register" only
+// ever appears once the answer is ready for the GP to record, per LPA 8.5.
+function renderRegisterSection(id, decision, facts) {
+  const section = document.getElementById('register-section');
+  const status = statusOf(decision);
+  const already = state.register[id];
+  if (status.key !== 'ready' && !already) {
+    section.hidden = true;
+    return;
+  }
+  section.hidden = false;
+  const body = document.getElementById('register-body');
+  body.innerHTML = '';
+
+  if (!already) {
+    body.appendChild(el('p', 'explainer', 'Every condition is evidenced. Recording in the Register is the General Partner’s act, not the tool’s: this button only logs it, once someone has decided to.'));
+    const btn = el('button', 'btn btn-primary', 'Record in register');
+    btn.type = 'button';
+    btn.addEventListener('click', () => recordInRegister(id));
+    body.appendChild(btn);
+    return;
+  }
+
+  const preview = already.preview;
+  body.appendChild(el('p', 'explainer', `Recorded ${Dates.formatReadable(already.at)}, effective ${Dates.formatReadable(preview.effectiveDate)} (LPA 8.5).`));
+  const table = document.createElement('table');
+  table.className = 'queue-table register-table';
+  const thead = document.createElement('thead');
+  thead.innerHTML = '<tr><th scope="col">Party</th><th scope="col">Role</th><th scope="col">Before</th><th scope="col">After</th></tr>';
+  table.appendChild(thead);
+  const tbody = document.createElement('tbody');
+  for (const row of preview.rows) {
+    const tr = document.createElement('tr');
+    tr.appendChild(el('td', null, row.party));
+    tr.appendChild(el('td', null, row.role));
+    tr.appendChild(el('td', null, `US$${row.before.toLocaleString('en-US')}`));
+    tr.appendChild(el('td', null, `US$${row.after.toLocaleString('en-US')}`));
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  body.appendChild(table);
+
+  const exportRow = el('div', 'register-export');
+  const jsonBtn = el('button', 'btn btn-secondary btn-sm', 'Export JSON');
+  jsonBtn.type = 'button';
+  jsonBtn.addEventListener('click', () => downloadFile(`${(QUEUE_META[id] || {}).ref || id}-transfer-record.json`, registerRecordAsJson(id, facts, preview), 'application/json'));
+  const csvBtn = el('button', 'btn btn-secondary btn-sm', 'Export CSV');
+  csvBtn.type = 'button';
+  csvBtn.addEventListener('click', () => downloadFile(`${(QUEUE_META[id] || {}).ref || id}-transfer-record.csv`, registerRecordAsCsv(id, facts, preview), 'text/csv'));
+  exportRow.appendChild(jsonBtn);
+  exportRow.appendChild(csvBtn);
+  body.appendChild(exportRow);
 }
 
 function renderActivity(id) {
@@ -1888,6 +2785,9 @@ function runNavAction(action, triggerEl) {
   else if (action === 'scenarios') openPicker(triggerEl);
   else if (action === 'documents') openDocViewer('LPA', null);
   else if (action === 'assurance') navigate('#/assurance');
+  else if (action === 'playbook') navigate('#/playbook');
+  else if (action === 'chase') navigate('#/chase');
+  else if (action === 'counsel') navigate('#/counsel');
 }
 
 // --- Document viewer (reads docs/source Markdown, tab per document) ------
@@ -2058,6 +2958,17 @@ function renderBreadcrumb(id) {
   el2.appendChild(el('span', 'current', meta ? meta.ref : id === 'NEW' ? 'New request' : id === 'TRY' ? 'Try to break it' : `Scenario ${id}`));
 }
 
+const STAGE_ORDER = ['intake', 'compliance', 'consents', 'kyc', 'signatures', 'completion', 'register'];
+const STAGE_LABELS = {
+  intake: 'Intake',
+  compliance: 'Compliance review',
+  consents: 'Consents and notices',
+  kyc: 'KYC and documents',
+  signatures: 'Signatures',
+  completion: 'Completion',
+  register: 'Register updated',
+};
+
 function renderRequestHead(facts) {
   const t = facts.transfer;
   document.getElementById('request-title').textContent = `${t.transferor} → ${t.transferee}`;
@@ -2068,6 +2979,46 @@ function renderRequestHead(facts) {
     `${kind} of ${stake}, US$${amount} of Capital Contribution · completion ${Dates.formatReadable(t.proposed_completion)} · checked as of ${Dates.formatReadable(facts.as_of)}`;
 }
 
+// A compact horizontal tracker over the seven lifecycle stages. The current
+// stage (and, for a blocked or lawyer-review request, the compliance review
+// stage it is stuck at) is the only one marked; nothing here implies a
+// stage was ever "completed" with its own timestamp, since the demo does
+// not log stage transitions, only the facts and actions that a stage
+// tracker reads.
+// Deliberately does not repeat every stage's full name next to the request
+// tabs below (Overview / Compliance / Documents / Signatures / Activity):
+// two of the seven stage names read almost identically to two tab names
+// ("Compliance review" vs "Compliance", "Signatures" vs "Signatures"), and
+// showing both a lifecycle stage list and a tab bar spelling out the same
+// words reads as two navigations for one idea. The tracker instead shows
+// only the current stage's name as text ("Stage 3 of 7 · Consents and
+// notices"); the other six segments stay unlabelled progress ticks, with
+// each stage's full name kept as a title tooltip and in an aria-label for
+// screen readers, so the sequence is still discoverable, just not spelled
+// out in full next to a tab row that already uses adjacent words.
+function renderStageTracker(id, decision, facts) {
+  const container = document.getElementById('stage-tracker');
+  if (!container) return;
+  const meta = QUEUE_META[id];
+  const stage = stageFor(id, decision, facts);
+  const currentIndex = STAGE_ORDER.indexOf(stage.key);
+  container.innerHTML = '';
+  container.setAttribute('aria-label', `Lifecycle stage ${currentIndex + 1} of ${STAGE_ORDER.length}: ${stage.label}`);
+  for (let i = 0; i < STAGE_ORDER.length; i++) {
+    const key = STAGE_ORDER[i];
+    const item = el('li', 'stage-step');
+    item.title = STAGE_LABELS[key];
+    if (i < currentIndex) item.classList.add('is-done');
+    if (i === currentIndex) item.classList.add('is-current');
+    item.appendChild(el('span', 'visually-hidden', STAGE_LABELS[key]));
+    container.appendChild(item);
+  }
+  const days = meta ? daysOpen(meta.received, facts.as_of) : 0;
+  document.getElementById('stage-tracker-meta').textContent = meta
+    ? `Stage ${currentIndex + 1} of ${STAGE_ORDER.length} · ${stage.label} · ${days} day${days === 1 ? '' : 's'} since this request was received${pastServiceLevel({ dueDate: (nextActionOf(decision) || {}).due }, facts.as_of) ? ' · past service level' : ''}`
+    : '';
+}
+
 function renderTopbarContext() {
   const el2 = document.getElementById('topbar-context');
   if (el2 && DATA.baseFacts) el2.textContent = `Northgate Helion SPV LP · as of ${Dates.formatReadable(DATA.baseFacts.as_of)}`;
@@ -2075,7 +3026,20 @@ function renderTopbarContext() {
 
 function renderNavCurrent() {
   const route = state.route;
-  const current = route.view === 'new' ? 'new' : route.view === 'deadlines' ? 'deadlines' : route.view === 'assurance' ? 'assurance' : 'requests';
+  const current =
+    route.view === 'new'
+      ? 'new'
+      : route.view === 'deadlines'
+        ? 'deadlines'
+        : route.view === 'assurance'
+          ? 'assurance'
+          : route.view === 'playbook'
+            ? 'playbook'
+            : route.view === 'chase'
+              ? 'chase'
+              : route.view === 'counsel'
+                ? 'counsel'
+                : 'requests';
   for (const btn of document.querySelectorAll('[data-nav]')) {
     if (btn.dataset.nav === current) btn.setAttribute('aria-current', 'page');
     else btn.removeAttribute('aria-current');
@@ -2141,13 +3105,57 @@ function renderRequestView() {
 
   renderBreadcrumb(id);
   renderRequestHead(facts);
+  renderStageTracker(id, decision, facts);
+  renderRequestTabs(id);
   renderDealForm(facts, decidingId, ruleMap);
-  renderAnswer(decision, ruleMap);
+  renderAnswer(decision, ruleMap, id);
   renderWhy(decision, decidingId, ruleMap);
-  renderNext(decision, ruleMap);
+  renderNext(decision, ruleMap, id);
+  renderDocumentsPanel(id, decision, facts);
+  renderSignatures(id, decision, facts);
+  renderRegisterSection(id, decision, facts);
   renderActivity(id);
   renderAllRules(decision, ruleMap);
   renderAudit(decision);
+}
+
+// Real routable tabs: each has its own hash (#/request/id/tab) and its own
+// panel. Only the active panel is visible; switching tabs never re-fetches
+// or re-evaluates anything, it only changes which panel is shown and the
+// URL, so the browser back button and a shared link both land on the same
+// tab a reader was looking at.
+function renderRequestTabs(id) {
+  const nav = document.getElementById('request-tabs');
+  nav.innerHTML = '';
+  for (const tab of REQUEST_TABS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = `tab-btn-${tab.key}`;
+    btn.className = 'request-tab';
+    btn.setAttribute('role', 'tab');
+    const selected = state.route.tab === tab.key;
+    btn.setAttribute('aria-selected', String(selected));
+    btn.tabIndex = selected ? 0 : -1;
+    btn.textContent = tab.label;
+    btn.addEventListener('click', () => navigate(`#/request/${id}/${tab.key}`));
+    btn.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      e.preventDefault();
+      const i = REQUEST_TABS.findIndex((t) => t.key === tab.key);
+      const next = REQUEST_TABS[(i + (e.key === 'ArrowRight' ? 1 : REQUEST_TABS.length - 1)) % REQUEST_TABS.length];
+      navigate(`#/request/${id}/${next.key}`);
+      document.getElementById(`tab-btn-${next.key}`)?.focus();
+    });
+    nav.appendChild(btn);
+  }
+  for (const tab of REQUEST_TABS) {
+    const panel = document.getElementById(`panel-${tab.key}`);
+    if (panel) panel.hidden = state.route.tab !== tab.key;
+  }
+  const current = document.getElementById(`tab-btn-${state.route.tab}`);
+  if (current && nav.scrollWidth > nav.clientWidth) {
+    nav.scrollLeft = Math.max(0, current.offsetLeft - nav.offsetLeft - 16);
+  }
 }
 
 function render() {
@@ -2157,12 +3165,18 @@ function render() {
   const isNew = view === 'new';
   const isDeadlines = view === 'deadlines';
   const isAssurance = view === 'assurance';
+  const isPlaybook = view === 'playbook';
+  const isChase = view === 'chase';
+  const isCounsel = view === 'counsel';
   const isQueue = view === 'queue';
 
   document.getElementById('view-queue').hidden = !isQueue;
   document.getElementById('view-new').hidden = !isNew;
   document.getElementById('view-deadlines').hidden = !isDeadlines;
   document.getElementById('view-assurance').hidden = !isAssurance;
+  document.getElementById('view-playbook').hidden = !isPlaybook;
+  document.getElementById('view-chase').hidden = !isChase;
+  document.getElementById('view-counsel').hidden = !isCounsel;
   document.getElementById('view-request').hidden = !isRequest;
   document.getElementById('mobile-answer-bar').hidden = !isRequest;
   document.body.classList.toggle('view-request', isRequest);
@@ -2177,6 +3191,9 @@ function render() {
   else if (isNew) renderWizard();
   else if (isDeadlines) renderDeadlines();
   else if (isAssurance) renderAssuranceView();
+  else if (isPlaybook) renderPlaybookView();
+  else if (isChase) renderChaseView();
+  else if (isCounsel) renderCounselView();
   else renderQueue();
 }
 
@@ -2790,6 +3807,105 @@ function renderBreakResult(breakCase) {
   actions.appendChild(openBtn);
   actions.appendChild(againBtn);
   container.appendChild(actions);
+}
+
+// --- Playbook -------------------------------------------------------------
+//
+// Renders the rulebook itself as a set of readable positions, grouped by
+// document, the way a law firm's own transfer playbook reads: the
+// provision, the clause it comes from, what the tool checks, what it does
+// with each outcome, and the scenarios that prove it. All text comes from
+// rulebook.json and clauses.json; nothing here is invented copy.
+
+// Returns '' when the rule's own description already states its effect on
+// the verdict (or lack of one), so the outcome line is never a near-repeat
+// of the sentence just read above it.
+function playbookOutcomeText(rule) {
+  const keys = Object.keys(rule.findings || {});
+  const blocks = keys.some((k) => k.startsWith('FAILED'));
+  const escalates = keys.some((k) => k.startsWith('UNKNOWN') || k.startsWith('CONTRADICTORY')) || rule.id === 'X-VERSION';
+  const acts = keys.some((k) => k.startsWith('OUTSTANDING'));
+  const parts = [];
+  if (blocks) parts.push('blocks the transfer');
+  if (escalates) parts.push('sends it to a lawyer');
+  if (acts) parts.push('creates a checklist action');
+  if (parts.length === 0) return /verdict/i.test(rule.description) ? '' : 'Never changes the verdict on its own.';
+  const last = parts.pop();
+  return `When this condition is not met, it ${parts.length ? parts.join(', ') + ' or ' : ''}${last}, depending on the evidence.`;
+}
+
+function scenariosTestingRule(ruleId) {
+  return DATA.scenarios.filter((s) => s.expect && s.expect.rule_states && Object.prototype.hasOwnProperty.call(s.expect.rule_states, ruleId));
+}
+
+function renderPlaybookView() {
+  const gateLabel = Object.fromEntries(DATA.rulebook.gates.map((g) => [g.id, g.label]));
+  document.getElementById('playbook-summary').textContent =
+    `${DATA.rulebook.rules.length} rules across ${DATA.rulebook.gates.length} gates · ${DATA.rulebook.rulebook_version}`;
+
+  const body = document.getElementById('playbook-body');
+  body.innerHTML = '';
+
+  for (const gate of DATA.rulebook.gates) {
+    const rules = DATA.rulebook.rules.filter((r) => r.gate === gate.id);
+    if (rules.length === 0) continue;
+
+    const section = el('section', 'playbook-gate');
+    section.appendChild(el('h2', 'section-title playbook-gate-title', gateLabel[gate.id] || gate.id));
+
+    for (const rule of rules) {
+      const card = el('div', 'playbook-rule');
+      const main = el('div', 'playbook-rule-main');
+      const head = el('div', 'playbook-rule-head');
+      head.appendChild(el('h3', 'playbook-rule-title', rule.title));
+      head.appendChild(el('span', 'playbook-rule-id', rule.id));
+      main.appendChild(head);
+
+      if (rule.citations && rule.citations.length) {
+        const cites = el('div', 'playbook-citations');
+        for (const c of rule.citations) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'playbook-citation';
+          btn.textContent = formatCitation(c);
+          btn.addEventListener('click', () => openDocViewer(c.doc, c.section));
+          cites.appendChild(btn);
+        }
+        main.appendChild(cites);
+      }
+
+      main.appendChild(el('p', 'playbook-rule-description', rule.description));
+      const outcomeText = playbookOutcomeText(rule);
+      if (outcomeText) main.appendChild(el('p', 'playbook-rule-outcome', outcomeText));
+      card.appendChild(main);
+
+      // The right column: the clause text itself, so the position and its
+      // source sit side by side, and the scenarios that prove it, so the
+      // page uses the width a 1120px container gives it rather than
+      // leaving it empty next to a 640px column of prose.
+      const side = el('div', 'playbook-rule-side');
+      const topCitation = rule.citations && rule.citations[0];
+      const clause = topCitation && lookupClause(topCitation);
+      if (clause) {
+        const clauseBox = el('div', 'playbook-clause');
+        clauseBox.appendChild(el('div', 'playbook-clause-source', `${clause.docTitle.split(' - ')[0]} · ${formatCitation(topCitation)} · p. ${clause.page}`));
+        clauseBox.appendChild(el('blockquote', null, clause.text));
+        side.appendChild(clauseBox);
+      }
+      const tested = scenariosTestingRule(rule.id);
+      const testedLine = el('p', 'playbook-rule-scenarios');
+      if (tested.length) {
+        testedLine.textContent = `Tested by: ${tested.map((s) => `${s.id} (${s.display_name || s.title})`).join(', ')}`;
+      } else {
+        testedLine.textContent = 'Covered indirectly by the known answer suite.';
+      }
+      side.appendChild(testedLine);
+      card.appendChild(side);
+
+      section.appendChild(card);
+    }
+    body.appendChild(section);
+  }
 }
 
 function renderAssuranceView() {

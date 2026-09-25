@@ -12,17 +12,17 @@ The same request on a laptop and on a phone.
 
 ## Try it in a minute
 
-The demo opens on a queue of eight transfer requests for one SPV, the way an operations team would see them: each with its status, the reason in one line and its completion date. Every request opens into the deal itself, where each fact can be changed and the answer updates instantly.
+The demo opens on a queue of twelve transfer requests for one SPV, the way an operations team would see them: each with its status, the reason in one line, its stage and its completion date. Every request opens into five tabs: Overview, Compliance, Documents, Signatures and Activity.
 
-1. **Open the request to Kestrel Automation.** It is blocked. The SPV's own documents are satisfied, but Helion's stockholders' agreement bars competitors whatever the consents, and the clause is quoted with a link to its page in the PDF.
-2. **Change the buyer.** The answer moves to "ready for the GP to record", and the request's row in the queue changes with it.
+1. **Open the request to Kestrel Automation.** It is blocked. The SPV's own documents are satisfied, but Helion's stockholders' agreement bars competitors whatever the consents, and the clause is quoted with a link to its page.
+2. **On the Compliance tab, change the buyer.** The answer moves to "ready for the GP to record", and the request's row in the queue changes with it.
 3. **Set Helion's consent to "Only agreed on a call".** The answer moves to lawyer review. The tool will not clear what it cannot evidence.
 4. **Open the request completing on Mon 2 Nov**, where Helion's right of first refusal is still running. Move completion to before Mon 26 Oct and it blocks, with the date the right lapses and the working behind it.
-5. **On any request with an action outstanding, log it.** The next action panel has a button for it: logging chases Helion's consent or the GP's, and the answer, the actions panel and the activity feed all update, with "Undo" on offer for a few seconds if you logged it by mistake.
-6. **Where a letter is needed, open the draft.** The consent request and the Transfer Notice each have a "Draft" button next to them that writes the letter from the facts on screen, ready to copy, marked "Draft for review. Not legal advice."
-7. **Open Assurance from the sidebar.** It runs all 31 known-answer cases and all 10 blind held-out cases live, in your browser, and a button there runs the same 486,000-combination stress test with a pass/fail breakdown and reports the number of unsafe clears: zero. "Try to break it" builds a random, deliberately awkward deal and shows why the answer still holds.
+5. **Work a request through to the register.** On the Harbour request, each next action has a button to log it, with Undo for a few seconds. The answer, the stage and the Activity tab update as you go. The Documents tab drafts the Transfer and Adherence Agreement and each letter the checklist calls for, the Signatures tab tracks who has signed, and once every condition is evidenced "Record in register" shows the entry before and after, with JSON and CSV export.
+6. **Use the desk views in the sidebar.** The Chase list shows everything waiting on the GP, Helion or the buyer, longest first. Counsel review lists every request at lawyer review with the uncertain point and its clause; a decision there changes the answer only where it maps to a fact the engine models. The Playbook sets out all 21 rules with their clauses and the scenarios that test them.
+7. **Open Assurance.** It runs all 31 known-answer cases and all 10 blind held-out cases live in your browser, and a button there runs the same 486,000-combination stress test and reports the number of unsafe clears: zero. "Try to break it" builds a random, deliberately awkward deal and shows why the answer still holds.
 
-"New request" starts a blank deal, and all 31 test scenarios can be opened from the queue.
+"New request" takes a transfer through a three-step intake and adds it to the queue, and all 31 test scenarios can be opened from the queue.
 
 ## Why I built this
 
@@ -91,7 +91,7 @@ The verdict follows a fixed order. Any failed rule blocks the transfer. Otherwis
 | Known-answer scenarios | 31 of 31 |
 | Held-out cases, written blind without access to the engine | 10 of 10, including every date |
 | Exhaustive sweep of fact combinations | 486,000 combinations, 0 unsafe clears |
-| Test suite | 59 of 59 |
+| Test suite | 64 of 64 |
 
 An unsafe clear is any case where the engine returns a checklist when it should have blocked the transfer or sent it to a lawyer. The sweep enumerates every combination of the facts most likely to cause one and checks two things on each: anything that must block does block, and nothing uncertain is ever cleared.
 
@@ -126,7 +126,7 @@ To test my own judgement, I used cross-model review: a model from a different ve
 
 1. **An intake layer: the model reads, the rules decide.** In practice the facts arrive as an email thread, a signed consent letter and a notice with a courier receipt, not as toggles. A model would read those sources and extract each fact together with the quote it relied on. Any fact it cannot ground in a quote would be recorded as unknown, so the intake could only ever make the engine more cautious. I would measure it by writing messy source material for each of the 31 scenarios and checking that the extracted facts reproduce the expected answers.
 2. **Rulebook drafting from a new agreement.** A model proposes the rules and citations for an unfamiliar stockholders' agreement, and a lawyer reviews them. Nothing would be trusted until it reproduces the answers of this hand-built rulebook on the same scenarios.
-3. **Deadline tracking.** The engine already computes when a refusal period lapses, when deemed consent arises and when the completion window closes. Those dates, with their working, would feed a calendar and reminders for each live transfer.
+3. **Reminders.** The engine already computes when a refusal period lapses, when deemed consent arises and when the completion window closes, each with its working, and the Deadlines page lists each request's next due date. Next is sending the chasers and reminders from those dates, so the chase list works itself rather than waiting for someone to open it.
 4. **Portfolio scale.** Many SPVs across many portfolio companies, with each company's transfer policy (including public positions like OpenAI's and Anthropic's) held as its own rule pack, and change-of-control events modelled alongside sales and pledges.
 
 ## Sources

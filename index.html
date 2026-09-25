@@ -29,10 +29,10 @@
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
   <symbol id="td-mark" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="8" fill="#3B35A0" style="fill: var(--mark-bg, #3B35A0)"/>
-    <rect x="7" y="9.5" width="12" height="4" rx="2" fill="#FFFFFF" fill-opacity="0.55"/>
-    <rect x="13" y="18.5" width="12" height="4" rx="2" fill="#FFFFFF"/>
-    <rect x="17" y="9.5" width="4" height="13" rx="2" fill="#FFFFFF" fill-opacity="0.85"/>
+    <rect width="32" height="32" rx="6" fill="#16171A" style="fill: var(--mark-bg, #16171A)"/>
+    <rect x="8" y="9" width="16" height="2.4" rx="1.2" fill="#FFFFFF" fill-opacity="0.9"/>
+    <rect x="8" y="14.8" width="16" height="2.4" rx="1.2" fill="#FFFFFF" fill-opacity="0.55"/>
+    <path d="M8.5 21.5l3.4 3.4 8.2-8.2" fill="none" stroke="#FFFFFF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
   </symbol>
 </svg>
 
@@ -45,11 +45,14 @@
       <svg class="brand-mark" width="28" height="28" aria-hidden="true"><use href="#td-mark"/></svg>
       <span class="brand-word">Transfer Desk</span>
     </a>
-    <p class="workspace-label">Northgate Helion SPV LP</p>
+    <p class="workspace-label">Fund<span>Northgate Helion SPV LP</span></p>
     <ul class="sidebar-nav">
       <li><button class="sidebar-link" type="button" data-nav="requests">Requests <span id="sidebar-count" class="sidebar-count"></span></button></li>
       <li><button class="sidebar-link" type="button" data-nav="new">New request</button></li>
       <li><button class="sidebar-link" type="button" data-nav="deadlines">Deadlines</button></li>
+      <li><button class="sidebar-link" type="button" data-nav="chase">Chase list</button></li>
+      <li><button class="sidebar-link" type="button" data-nav="counsel">Counsel review</button></li>
+      <li><button class="sidebar-link" type="button" data-nav="playbook">Playbook</button></li>
       <li><button class="sidebar-link" type="button" data-nav="scenarios">Test scenarios</button></li>
       <li><button class="sidebar-link" type="button" data-nav="assurance">Assurance</button></li>
       <li><button class="sidebar-link" type="button" data-nav="documents">Documents</button></li>
@@ -114,6 +117,8 @@
           </div>
           <button id="new-request-btn" class="btn btn-primary" type="button">New request</button>
         </div>
+
+        <dl id="kpi-row" class="kpi-row"></dl>
 
         <div id="due-week-strip" class="due-week-strip" hidden>
           <span class="due-week-label">Due this week</span>
@@ -205,7 +210,13 @@
           <p id="request-meta" class="page-sub"></p>
         </div>
 
-        <div class="layout">
+        <ol id="stage-tracker" class="stage-tracker"></ol>
+        <p id="stage-tracker-meta" class="stage-tracker-meta"></p>
+
+        <nav id="request-tabs" class="request-tabs" role="tablist" aria-label="Request sections"></nav>
+
+        <!-- Overview: the answer, why, and what happens next. -->
+        <div id="panel-overview" class="request-panel layout-overview" role="tabpanel" aria-labelledby="tab-btn-overview">
           <div class="decision-col">
             <aside id="answer-panel" class="answer-panel card" aria-live="polite"></aside>
 
@@ -215,36 +226,63 @@
             </section>
           </div>
 
-          <div class="deal-col">
-            <section class="deal-block">
-              <h2 class="section-title section-title-bare">The deal</h2>
-              <p class="section-sub">Change any fact and the answer updates instantly.</p>
-              <div id="deal-form"></div>
-            </section>
-          </div>
-
           <div class="actions-col">
             <section id="next-section" class="card card-pad">
               <h2 id="next-heading" class="section-title">Next actions</h2>
               <ol id="next-list" class="checklist"></ol>
             </section>
 
-            <section id="activity-section" class="card card-pad">
-              <h2 class="section-title">Activity</h2>
-              <ol id="activity-list" class="activity-list"></ol>
+            <section id="register-section" class="card card-pad" hidden>
+              <h2 class="section-title">Register update</h2>
+              <div id="register-body"></div>
             </section>
           </div>
         </div>
 
-        <section class="card card-pad request-disclosure">
-          <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="false">Every rule we checked</button>
-          <div id="all-rules-body" hidden></div>
-        </section>
+        <!-- Compliance: the facts the engine reads, and every rule it checked. -->
+        <div id="panel-compliance" class="request-panel" role="tabpanel" aria-labelledby="tab-btn-compliance" hidden>
+          <section class="deal-block">
+            <h2 class="section-title section-title-bare">The deal</h2>
+            <p class="section-sub">Change any fact and the answer updates instantly.</p>
+            <div id="deal-form"></div>
+          </section>
 
-        <section id="audit-section" class="audit-section">
-          <button id="audit-toggle" class="disclosure-toggle disclosure-quiet" type="button" aria-expanded="false">Audit record</button>
-          <pre id="audit-json" class="audit-json" hidden></pre>
-        </section>
+          <section class="card card-pad request-disclosure">
+            <button id="all-rules-toggle" class="disclosure-toggle" type="button" aria-expanded="true">Every rule we checked</button>
+            <div id="all-rules-body"></div>
+          </section>
+        </div>
+
+        <!-- Documents: deterministic drafts built from the same facts. -->
+        <div id="panel-documents" class="request-panel" role="tabpanel" aria-labelledby="tab-btn-documents" hidden>
+          <p class="explainer">Drafts prepared from the facts on this request: the agreement itself, then each notice or letter the checklist calls for. Every draft is for review and is not legal advice.</p>
+          <div id="documents-body" class="documents-body"></div>
+        </div>
+
+        <!-- Signatures: the Transfer and Adherence Agreement. -->
+        <div id="panel-signatures" class="request-panel" role="tabpanel" aria-labelledby="tab-btn-signatures" hidden>
+          <section id="signatures-section" class="card card-pad" hidden>
+            <h2 class="section-title">Signatures</h2>
+            <p class="section-sub">Transfer and Adherence Agreement · <a id="signatures-view-agreement" href="#">Read the draft</a></p>
+            <ul id="signatures-list" class="signatures-list"></ul>
+          </section>
+          <p id="signatures-empty" class="queue-empty" hidden>Signatures open once a transfer is not blocked, since there is nothing to sign on one that cannot proceed.</p>
+        </div>
+
+        <!-- Activity: the full audit trail and the audit record. Register
+             update lives on Overview instead, next to the "GP records the
+             transfer" next action it completes. -->
+        <div id="panel-activity" class="request-panel" role="tabpanel" aria-labelledby="tab-btn-activity" hidden>
+          <section id="activity-section" class="card card-pad">
+            <h2 class="section-title">Activity</h2>
+            <ol id="activity-list" class="activity-list"></ol>
+          </section>
+
+          <section id="audit-section" class="audit-section">
+            <button id="audit-toggle" class="disclosure-toggle disclosure-quiet" type="button" aria-expanded="false">Audit record</button>
+            <pre id="audit-json" class="audit-json" hidden></pre>
+          </section>
+        </div>
       </section>
 
       <!-- ============================ Assurance ============================ -->
@@ -302,6 +340,58 @@
         </section>
       </section>
 
+      <!-- ============================ Playbook ============================ -->
+      <section id="view-playbook" hidden>
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Transfer playbook</h1>
+            <p id="playbook-summary" class="page-sub"></p>
+          </div>
+        </div>
+        <p class="explainer playbook-intro">Every position the desk checks, traced to the clause it comes from. This is the codified version of the fund's transfer rules: what is checked automatically, what it does when a condition fails, and which test scenarios prove it.</p>
+        <div id="playbook-body" class="playbook-body"></div>
+      </section>
+
+      <!-- ============================ Chase list ============================ -->
+      <section id="view-chase" hidden>
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Chase list</h1>
+            <p id="chase-summary" class="page-sub"></p>
+          </div>
+        </div>
+        <p class="explainer">Everything outstanding across every request that is waiting on the GP, Helion or the buyer to respond, not on Ops to act next. Sorted longest waiting first.</p>
+        <div class="card queue-card">
+          <table id="chase-table" class="queue-table">
+            <thead>
+              <tr>
+                <th scope="col">Request</th>
+                <th scope="col">Waiting on</th>
+                <th scope="col">Days</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="chase-table-body"></tbody>
+          </table>
+          <ul id="chase-list-mobile" class="queue-list-mobile"></ul>
+          <p id="chase-empty" class="queue-empty" hidden>Nothing is waiting on someone else right now.</p>
+        </div>
+        <p id="chase-not-asked" class="explainer chase-not-asked" hidden></p>
+      </section>
+
+      <!-- ============================ Counsel review ============================ -->
+      <section id="view-counsel" hidden>
+        <div class="page-head">
+          <div>
+            <h1 class="page-title">Counsel review</h1>
+            <p id="counsel-summary" class="page-sub"></p>
+          </div>
+        </div>
+        <p class="explainer">Every request currently at lawyer review, with the uncertain point and the clause behind it. Recording a decision only changes the answer where it maps to a fact the desk already models; anything else is a note for the file.</p>
+        <div id="counsel-body" class="counsel-body"></div>
+        <p id="counsel-empty" class="queue-empty" hidden>Nothing is waiting on a lawyer right now.</p>
+      </section>
+
     </main>
 
     <footer class="footer">
@@ -330,6 +420,9 @@
     <li><button class="sidebar-link" type="button" data-nav="requests">Requests <span id="drawer-count" class="sidebar-count"></span></button></li>
     <li><button class="sidebar-link" type="button" data-nav="new">New request</button></li>
     <li><button class="sidebar-link" type="button" data-nav="deadlines">Deadlines</button></li>
+    <li><button class="sidebar-link" type="button" data-nav="chase">Chase list</button></li>
+    <li><button class="sidebar-link" type="button" data-nav="counsel">Counsel review</button></li>
+    <li><button class="sidebar-link" type="button" data-nav="playbook">Playbook</button></li>
     <li><button class="sidebar-link" type="button" data-nav="scenarios">Test scenarios</button></li>
     <li><button class="sidebar-link" type="button" data-nav="assurance">Assurance</button></li>
     <li><button class="sidebar-link" type="button" data-nav="documents">Documents</button></li>
